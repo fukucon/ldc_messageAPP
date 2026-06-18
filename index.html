@@ -31,6 +31,8 @@
     header .back { font-size: 22px; cursor: pointer; display: none; }
     header .title { font-size: 17px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     header .user { font-size: 11px; opacity: .85; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    header .ocr-btn { flex: 0 0 auto; background: rgba(255,255,255,.2); color: #fff; border: none; border-radius: 16px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    header .ocr-btn:active { background: rgba(255,255,255,.35); }
 
     /* 画面切り替え */
     .screen { flex: 1 1 auto; display: none; flex-direction: column; min-height: 0; }
@@ -79,6 +81,7 @@
   <header>
     <span class="back" id="back">‹</span>
     <span class="title" id="title">LDC Chat</span>
+    <button class="ocr-btn" id="ocrBtn">OCR</button>
     <span class="user" id="me"></span>
   </header>
 
@@ -222,6 +225,17 @@
     // ---- ポーリング（簡易リアルタイム） ----
     function startPolling() { stopPolling(); state.timer = setInterval(loadMessages, 3000); }
     function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+
+    // ---- OCR画面への遷移 ----
+    // WebアプリURLを取得しておき、ボタン押下で ?app=ocr に遷移する
+    var ocrUrl = '';
+    google.script.run.withSuccessHandler(function (url) {
+      ocrUrl = url;
+    }).getWebAppUrl();
+    $('ocrBtn').addEventListener('click', function () {
+      if (!ocrUrl) return;
+      window.top.location.href = ocrUrl + '?app=ocr';
+    });
 
     // ---- 初期化 ----
     google.script.run.withSuccessHandler(function (email) {

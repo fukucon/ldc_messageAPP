@@ -22,6 +22,13 @@ function doGet(e) {
 }
 
 /**
+ * WebアプリのURLを返す（画面遷移用）。
+ */
+function getWebAppUrl() {
+  return ScriptApp.getService().getUrl();
+}
+
+/**
  * 現在ログイン中のユーザーのメールアドレスを返す。
  * 取得できない（匿名アクセス）場合は 'ゲスト' を返す。
  */

@@ -18,6 +18,7 @@
 </head>
 <body>
   <h1>PDF OCR (Gemini)</h1>
+  <p><a href="#" id="toChat">← チャットに戻る</a></p>
 
   <div class="row">
     <input type="text" id="fileId" placeholder="DriveのPDFファイルIDを入力">
@@ -32,6 +33,14 @@
   <span id="saveStatus" style="margin-left:8px;"></span>
 
   <script>
+    // チャット画面（パラメータなし）に戻る
+    google.script.run.withSuccessHandler(function (url) {
+      document.getElementById('toChat').onclick = function (ev) {
+        ev.preventDefault();
+        window.top.location.href = url;
+      };
+    }).getWebAppUrl();
+
     // 直近のOCR対象とテキストを保持する
     var lastFileId = '';
     var lastText = '';
