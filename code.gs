@@ -5,9 +5,16 @@
  */
 
 /**
- * Webアプリのエントリーポイント. index.html を返す。
+ * Webアプリのエントリーポイント。
+ * URLパラメータ ?app=ocr の場合は OCR画面（ocr.html）、
+ * それ以外はチャット画面（index.html）を返す。
  */
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.app === 'ocr') {
+    return HtmlService.createHtmlOutputFromFile('ocr')
+      .setTitle('PDF OCR')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
   return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('LDC Chat')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
