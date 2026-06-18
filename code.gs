@@ -131,6 +131,12 @@ function setupApiKey() {
   // ここに Gemini API キーを貼り付ける
   var API_KEY = 'YOUR_GEMINI_API_KEY';
 
+  // プレースホルダのまま実行すると保存済みキーを消してしまうため、誤上書きを防ぐ
+  if (!API_KEY || API_KEY === 'YOUR_GEMINI_API_KEY') {
+    Logger.log('API_KEY が未入力です。実際のキーを貼り付けてから実行してください（上書きせず終了）。');
+    return;
+  }
+
   PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', API_KEY);
   Logger.log('設定完了');
 }
@@ -166,8 +172,8 @@ function ocrPdfWithGemini(fileId) {
     var file = DriveApp.getFileById(fileId);
     var base64Pdf = Utilities.base64Encode(file.getBlob().getBytes());
 
-    // Gemini API（gemini-1.5-flash）へのリクエストを組み立てる
-    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKey;
+    // Gemini API（gemini-2.5-flash）へのリクエストを組み立てる
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
     var payload = {
       contents: [
         {
@@ -181,7 +187,13 @@ function ocrPdfWithGemini(fileId) {
             }
           ]
         }
-      ]
+      ],
+      // OCR用途では思考(thinking)をオフにして高速化・空応答を防ぐ
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     };
 
     var options = {
@@ -232,8 +244,8 @@ function ocrUploadedPdf(base64Pdf) {
       return 'エラー: PDFデータが空です。';
     }
 
-    // Gemini API（gemini-1.5-flash）へのリクエストを組み立てる
-    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKey;
+    // Gemini API（gemini-2.5-flash）へのリクエストを組み立てる
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
     var payload = {
       contents: [
         {
@@ -247,7 +259,13 @@ function ocrUploadedPdf(base64Pdf) {
             }
           ]
         }
-      ]
+      ],
+      // OCR用途では思考(thinking)をオフにして高速化・空応答を防ぐ
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     };
 
     var options = {
