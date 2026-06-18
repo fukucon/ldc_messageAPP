@@ -23,7 +23,8 @@
 
   <!-- PDF・画像をその場でアップロードして解析する -->
   <div class="uploader">
-    <input type="file" id="pdfFile" accept="application/pdf,image/*">
+    <!-- Safari(iOS)は accept に複数タイプ指定するとダイアログが開かない不具合があるため accept は付けない -->
+    <input type="file" id="pdfFile">
     <span id="fileName">PDF または 画像（PNG/JPEG等）を選択</span>
   </div>
   <button id="run" onclick="runOcr()">OCR実行</button>
@@ -58,6 +59,12 @@
       var fileInput = document.getElementById('pdfFile');
       var file = fileInput.files[0];
       if (!file) { alert('PDFまたは画像ファイルを選択してください'); return; }
+      // PDF・画像以外は弾く（accept未指定のため）
+      var type = file.type || '';
+      if (type !== 'application/pdf' && type.indexOf('image/') !== 0) {
+        alert('PDFまたは画像ファイルを選択してください');
+        return;
+      }
 
       document.getElementById('run').disabled = true;
       document.getElementById('status').textContent = '読み取り中...';
