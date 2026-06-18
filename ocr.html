@@ -8,8 +8,9 @@
   <style>
     body { font-family: sans-serif; max-width: 700px; margin: 20px auto; padding: 0 16px; }
     h1 { font-size: 20px; }
-    .row { display: flex; gap: 8px; margin-bottom: 12px; }
-    input[type="text"] { flex: 1; padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 6px; }
+    .uploader { border: 2px dashed #b0c4f0; border-radius: 10px; padding: 20px; text-align: center; margin-bottom: 12px; background: #f7f9ff; }
+    .uploader input[type="file"] { width: 100%; }
+    #fileName { display: block; margin-top: 8px; font-size: 13px; color: #555; }
     button { padding: 10px 16px; font-size: 15px; border: none; border-radius: 6px; background: #1a73e8; color: #fff; cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
     #status { color: #1a73e8; margin: 8px 0; min-height: 1.2em; }
@@ -20,10 +21,12 @@
   <h1>PDF OCR (Gemini)</h1>
   <p><a href="#" id="toChat">← チャットに戻る</a></p>
 
-  <div class="row">
-    <input type="text" id="fileId" placeholder="DriveのPDFファイルIDを入力">
-    <button id="run" onclick="runOcr()">OCR実行</button>
+  <!-- PDFをその場でアップロードして解析する -->
+  <div class="uploader">
+    <input type="file" id="pdfFile" accept="application/pdf">
+    <span id="fileName"></span>
   </div>
+  <button id="run" onclick="runOcr()">OCR実行</button>
 
   <div id="status"></div>
   <pre id="result"></pre>
@@ -41,13 +44,20 @@
       };
     }).getWebAppUrl();
 
-    // 直近のOCR対象とテキストを保持する
-    var lastFileId = '';
+    // 直近のファイル名とOCRテキストを保持する
+    var lastFileName = '';
     var lastText = '';
 
+    // 選択したファイル名を表示
+    document.getElementById('pdfFile').addEventListener('change', function () {
+      var f = this.files[0];
+      document.getElementById('fileName').textContent = f ? f.name : '';
+    });
+
     function runOcr() {
-      var fileId = document.getElementById('fileId').value.trim();
-      if (!fileId) { alert('ファイルIDを入力してください'); return; }
+      var fileInput = document.getElementById('pdfFile');
+      var file = fileInput.files[0];
+      if (!file) { alert('PDFファイルを選択してください'); return; }
 
       document.getElementById('run').disabled = true;
       document.getElementById('status').textContent = '読み取り中...';
@@ -55,22 +65,33 @@
       document.getElementById('save').style.display = 'none';
       document.getElementById('saveStatus').textContent = '';
 
-      google.script.run
-        .withSuccessHandler(function (text) {
-          document.getElementById('status').textContent = '完了';
-          document.getElementById('result').textContent = text;
-          document.getElementById('run').disabled = false;
-          // 結果を保持し、保存ボタンを表示
-          lastFileId = fileId;
-          lastText = text;
-          document.getElementById('save').style.display = 'inline-block';
-        })
-        .withFailureHandler(function (err) {
-          document.getElementById('status').textContent = '';
-          document.getElementById('run').disabled = false;
-          alert('エラー: ' + err.message);
-        })
-        .ocrPdfWithGemini(fileId);
+      // ブラウザでファイルをBase64化してサーバーへ送る
+      var reader = new FileReader();
+      reader.onload = function () {
+        // data URL の "data:application/pdf;base64," 以降を取り出す
+        var base64 = reader.result.split(',')[1];
+        google.script.run
+          .withSuccessHandler(function (text) {
+            document.getElementById('status').textContent = '完了';
+            document.getElementById('result').textContent = text;
+            document.getElementById('run').disabled = false;
+            lastFileName = file.name;
+            lastText = text;
+            document.getElementById('save').style.display = 'inline-block';
+          })
+          .withFailureHandler(function (err) {
+            document.getElementById('status').textContent = '';
+            document.getElementById('run').disabled = false;
+            alert('エラー: ' + err.message);
+          })
+          .ocrUploadedPdf(base64);
+      };
+      reader.onerror = function () {
+        document.getElementById('status').textContent = '';
+        document.getElementById('run').disabled = false;
+        alert('ファイルの読み込みに失敗しました');
+      };
+      reader.readAsDataURL(file);
     }
 
     function saveResult() {
@@ -87,7 +108,7 @@
           document.getElementById('save').disabled = false;
           alert('エラー: ' + err.message);
         })
-        .saveOcrResult(lastFileId, lastText);
+        .saveUploadedOcrResult(lastFileName, lastText);
     }
   </script>
 </body>
