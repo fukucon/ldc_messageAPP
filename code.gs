@@ -123,8 +123,8 @@ function getSheet_(name) {
  * PDF OCR 機能（Gemini API）
  * ============================================================ */
 
-// OCR時にPDFと一緒に送る固定プロンプト文（ここを編集すれば全関数に反映される）
-var OCR_PROMPT = 'このPDFの文字をすべてOCRして、テキストとして出力してください。';
+// OCR時にPDF・画像と一緒に送る固定プロンプト文（ここを編集すれば全関数に反映される）
+var OCR_PROMPT = 'この画像またはPDFの文字をすべてOCRして、テキストとして出力してください。';
 
 /**
  * フェーズ0: APIキーをスクリプトプロパティに保存する。
@@ -171,9 +171,11 @@ function ocrPdfWithGemini(fileId) {
       return 'エラー: APIキーが未設定です。setupApiKey() を実行してください。';
     }
 
-    // PDFを取得して Base64 エンコード
+    // ファイルを取得して Base64 エンコード（PDF・画像どちらも対応）
     var file = DriveApp.getFileById(fileId);
-    var base64Pdf = Utilities.base64Encode(file.getBlob().getBytes());
+    var blob = file.getBlob();
+    var base64Data = Utilities.base64Encode(blob.getBytes());
+    var mimeType = blob.getContentType() || 'application/pdf';
 
     // Gemini API（gemini-2.5-flash）へのリクエストを組み立てる
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
@@ -184,8 +186,8 @@ function ocrPdfWithGemini(fileId) {
             { text: OCR_PROMPT },
             {
               inline_data: {
-                mime_type: 'application/pdf',
-                data: base64Pdf
+                mime_type: mimeType,
+                data: base64Data
               }
             }
           ]
@@ -230,22 +232,25 @@ function ocrPdfWithGemini(fileId) {
 }
 
 /**
- * アップロードされたPDF（Base64）をその場で Gemini OCR する。
+ * アップロードされたPDF・画像（Base64）をその場で Gemini OCR する。
  * Driveに保存せず、ブラウザから渡されたBase64データを直接送信する。
  * エラー時は例外をthrowせず、エラーメッセージ文字列を返す。
- * @param {string} base64Pdf Base64エンコード済みPDFデータ
+ * @param {string} base64Data Base64エンコード済みデータ
+ * @param {string} mimeType   データのMIMEタイプ（例: application/pdf, image/png）
  * @return {string} OCR結果テキスト（または失敗時のエラーメッセージ）
  */
-function ocrUploadedPdf(base64Pdf) {
+function ocrUploadedPdf(base64Data, mimeType) {
   try {
     // APIキーをスクリプトプロパティから取得
     var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) {
       return 'エラー: APIキーが未設定です。setupApiKey() を実行してください。';
     }
-    if (!base64Pdf) {
-      return 'エラー: PDFデータが空です。';
+    if (!base64Data) {
+      return 'エラー: ファイルデータが空です。';
     }
+    // MIMEタイプ未指定の場合はPDFとして扱う
+    mimeType = mimeType || 'application/pdf';
 
     // Gemini API（gemini-2.5-flash）へのリクエストを組み立てる
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
@@ -256,8 +261,8 @@ function ocrUploadedPdf(base64Pdf) {
             { text: OCR_PROMPT },
             {
               inline_data: {
-                mime_type: 'application/pdf',
-                data: base64Pdf
+                mime_type: mimeType,
+                data: base64Data
               }
             }
           ]
