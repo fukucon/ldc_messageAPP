@@ -123,6 +123,9 @@ function getSheet_(name) {
  * PDF OCR 機能（Gemini API）
  * ============================================================ */
 
+// OCR時にPDFと一緒に送る固定プロンプト文（ここを編集すれば全関数に反映される）
+var OCR_PROMPT = 'このPDFの文字をすべてOCRして、テキストとして出力してください。';
+
 /**
  * フェーズ0: APIキーをスクリプトプロパティに保存する。
  * 実行前に下の API_KEY に Google AI Studio のキーを貼り付けてください。
@@ -178,7 +181,7 @@ function ocrPdfWithGemini(fileId) {
       contents: [
         {
           parts: [
-            { text: 'このPDFの文字をすべてOCRして、テキストとして出力してください。' },
+            { text: OCR_PROMPT },
             {
               inline_data: {
                 mime_type: 'application/pdf',
@@ -250,7 +253,7 @@ function ocrUploadedPdf(base64Pdf) {
       contents: [
         {
           parts: [
-            { text: 'このPDFの文字をすべてOCRして、テキストとして出力してください。' },
+            { text: OCR_PROMPT },
             {
               inline_data: {
                 mime_type: 'application/pdf',
