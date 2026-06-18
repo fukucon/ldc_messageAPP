@@ -206,3 +206,33 @@ function ocrPdfWithGemini(fileId) {
     return 'エラー: ' + e.message;
   }
 }
+
+/**
+ * フェーズ3: OCR結果をスプレッドシートに保存する。
+ * 保存先シート「OCR結果」が無ければ自動作成する。
+ * 1行に [実行日時, fileId, ファイル名, OCRテキスト] を追記する。
+ * @param {string} fileId  対象PDFのファイルID
+ * @param {string} ocrText OCR結果テキスト
+ * @return {string} 完了メッセージ
+ */
+function saveOcrResult(fileId, ocrText) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('OCR結果');
+
+  // シートが無ければ作成し、ヘッダー行を設定する
+  if (!sheet) {
+    sheet = ss.insertSheet('OCR結果');
+    sheet.appendRow(['実行日時', 'fileId', 'ファイル名', 'OCRテキスト']);
+  }
+
+  // ファイル名を取得（取得できない場合は空文字）
+  var fileName = '';
+  try {
+    fileName = DriveApp.getFileById(fileId).getName();
+  } catch (e) {
+    fileName = '';
+  }
+
+  sheet.appendRow([new Date(), fileId, fileName, ocrText]);
+  return '保存しました';
+}
