@@ -104,3 +104,32 @@ function getSheet_(name) {
   }
   return sheet;
 }
+
+/* ============================================================
+ * PDF OCR 機能（Gemini API）
+ * ============================================================ */
+
+/**
+ * フェーズ0: APIキーをスクリプトプロパティに保存する。
+ * 実行前に下の API_KEY に Google AI Studio のキーを貼り付けてください。
+ */
+function setupApiKey() {
+  // ここに Gemini API キーを貼り付ける
+  var API_KEY = 'YOUR_GEMINI_API_KEY';
+
+  PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', API_KEY);
+  Logger.log('設定完了');
+}
+
+/**
+ * フェーズ0: APIキーが設定済みか確認する。
+ * 設定済みなら先頭10文字だけ、未設定なら「未設定です」とログ表示する。
+ */
+function checkApiKey() {
+  var key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (key) {
+    Logger.log(key.substring(0, 10));
+  } else {
+    Logger.log('未設定です');
+  }
+}
