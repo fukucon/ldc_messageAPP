@@ -133,3 +133,69 @@ function checkApiKey() {
     Logger.log('未設定です');
   }
 }
+
+/**
+ * フェーズ1: PDFを Gemini API でOCRし、テキストを返す。
+ * エラー時は例外をthrowせず、エラーメッセージ文字列を返す。
+ * @param {string} fileId DriveのPDFファイルID
+ * @return {string} OCR結果テキスト（または失敗時のエラーメッセージ）
+ */
+function ocrPdfWithGemini(fileId) {
+  try {
+    // APIキーをスクリプトプロパティから取得
+    var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (!apiKey) {
+      return 'エラー: APIキーが未設定です。setupApiKey() を実行してください。';
+    }
+
+    // PDFを取得して Base64 エンコード
+    var file = DriveApp.getFileById(fileId);
+    var base64Pdf = Utilities.base64Encode(file.getBlob().getBytes());
+
+    // Gemini API（gemini-1.5-flash）へのリクエストを組み立てる
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKey;
+    var payload = {
+      contents: [
+        {
+          parts: [
+            { text: 'このPDFの文字をすべてOCRして、テキストとして出力してください。' },
+            {
+              inline_data: {
+                mime_type: 'application/pdf',
+                data: base64Pdf
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    // API呼び出し
+    var response = UrlFetchApp.fetch(url, options);
+    var code = response.getResponseCode();
+    var body = response.getContentText();
+
+    if (code !== 200) {
+      return 'エラー: APIリクエスト失敗 (HTTP ' + code + ') ' + body;
+    }
+
+    // レスポンスからテキストを取り出す
+    var json = JSON.parse(body);
+    if (!json.candidates || !json.candidates.length) {
+      return 'エラー: OCR結果が取得できませんでした。' + body;
+    }
+    var text = json.candidates[0].content.parts[0].text;
+    return text;
+
+  } catch (e) {
+    // 例外はthrowせずメッセージ文字列で返す
+    return 'エラー: ' + e.message;
+  }
+}
