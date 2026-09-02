@@ -8,7 +8,11 @@
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background: #f1f3f4; }
-    body { display: flex; flex-direction: column; height: 100dvh; }
+    body { height: 100dvh; }
+
+    /* アプリ本体（回答待ちの間はぼかす） */
+    .app { display: flex; flex-direction: column; height: 100%; transition: filter .35s ease; }
+    .app.thinking { filter: blur(5px); pointer-events: none; }
 
     header { flex: 0 0 auto; background: #0b8043; color: #fff; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
     header .title { font-size: 16px; font-weight: 600; }
@@ -18,27 +22,125 @@
     .msg { max-width: 85%; padding: 10px 13px; border-radius: 14px; font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
     .msg.q { align-self: flex-end; background: #0b8043; color: #fff; border-bottom-right-radius: 4px; }
     .msg.a { align-self: flex-start; background: #fff; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
-    .msg.a.loading { color: #888; font-style: italic; }
     .hint { text-align: center; color: #9aa0a6; font-size: 13px; margin: 16px 8px; line-height: 1.6; }
 
     .composer { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px; background: #fff; border-top: 1px solid #e0e0e0; }
     .composer textarea { flex: 1; resize: none; border: 1px solid #ccc; border-radius: 20px; padding: 10px 14px; font-size: 15px; max-height: 100px; font-family: inherit; }
     .composer button { flex: 0 0 auto; width: 44px; height: 44px; border: none; border-radius: 50%; background: #0b8043; color: #fff; font-size: 18px; }
     .composer button:disabled { opacity: .5; }
+
+    /* ===== 回答待ちオーバーレイ ===== */
+    .overlay {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(241, 243, 244, .55);
+      animation: fadeIn .3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .thinker { position: relative; display: flex; flex-direction: column; align-items: center; }
+
+    /* 背後のふんわりした光 */
+    .glow {
+      position: absolute; top: 46%; left: 50%; width: 200px; height: 200px;
+      margin: -100px 0 0 -100px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(11,128,67,.22) 0%, rgba(11,128,67,0) 70%);
+      animation: breathe 3s ease-in-out infinite;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(.85); opacity: .7; }
+      50%      { transform: scale(1.15); opacity: 1; }
+    }
+
+    /* ぽわぽわ浮かぶ思考の泡 */
+    .bubbles { position: absolute; top: -10px; right: -30px; width: 70px; height: 70px; }
+    .bubble {
+      position: absolute; display: block; border-radius: 50%;
+      background: #fff; border: 2px solid #0b8043; opacity: 0;
+      animation: poyon 2.4s ease-in-out infinite;
+    }
+    .b1 { width: 10px; height: 10px; left: 2px;  bottom: 2px;  animation-delay: 0s; }
+    .b2 { width: 16px; height: 16px; left: 16px; bottom: 18px; animation-delay: .35s; }
+    .b3 { width: 24px; height: 24px; left: 34px; bottom: 38px; animation-delay: .7s; }
+    @keyframes poyon {
+      0%   { transform: translateY(10px)  scale(.3); opacity: 0; }
+      25%  { transform: translateY(0)     scale(1);  opacity: 1; }
+      70%  { transform: translateY(-6px)  scale(1);  opacity: 1; }
+      100% { transform: translateY(-22px) scale(1.2); opacity: 0; }
+    }
+
+    /* ロボット本体（ふわふわ上下） */
+    .robot { position: relative; width: 132px; height: 132px; animation: bob 2.6s ease-in-out infinite; }
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-10px); }
+    }
+    /* アンテナの光 */
+    .antenna-dot { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+    .thinking-text { margin-top: 16px; color: #0b8043; font-size: 15px; font-weight: 600; letter-spacing: .04em; }
+    .thinking-text .dot { animation: dotFade 1.4s infinite; }
+    .thinking-text .dot:nth-of-type(2) { animation-delay: .2s; }
+    .thinking-text .dot:nth-of-type(3) { animation-delay: .4s; }
+    @keyframes dotFade { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
+
+    /* 動きを減らす設定の端末では控えめにする */
+    @media (prefers-reduced-motion: reduce) {
+      .glow, .bubble, .robot, .antenna-dot, .thinking-text .dot { animation: none; }
+      .bubble { opacity: .9; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="title">就労規則チャットボット</div>
-  </header>
+  <!-- アプリ本体（回答待ちの間はぼかす） -->
+  <div class="app" id="app">
+    <header>
+      <div class="title">就労規則チャットボット</div>
+    </header>
 
-  <div id="log">
-    <div class="hint">就労規則についての質問を入力してください。<br>例：「有給休暇は何日ありますか？」「遅刻したときのルールは？」</div>
+    <div id="log">
+      <div class="hint">就労規則についての質問を入力してください。<br>例：「有給休暇は何日ありますか？」「遅刻したときのルールは？」</div>
+    </div>
+
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="質問を入力"></textarea>
+      <button id="send" onclick="ask()">➤</button>
+    </div>
   </div>
 
-  <div class="composer">
-    <textarea id="input" rows="1" placeholder="質問を入力"></textarea>
-    <button id="send" onclick="ask()">➤</button>
+  <!-- 回答待ちのオーバーレイ：ロボットが考えるアニメーション -->
+  <div class="overlay" id="overlay" hidden>
+    <div class="thinker">
+      <div class="glow"></div>
+
+      <!-- ぽわぽわ浮かぶ思考の泡 -->
+      <div class="bubbles">
+        <span class="bubble b1"></span>
+        <span class="bubble b2"></span>
+        <span class="bubble b3"></span>
+      </div>
+
+      <svg class="robot" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- アンテナ -->
+        <line x1="60" y1="16" x2="60" y2="30" stroke="#0b8043" stroke-width="3" stroke-linecap="round"/>
+        <circle class="antenna-dot" cx="60" cy="13" r="5" fill="#fbbc04"/>
+        <!-- 耳 -->
+        <rect x="18" y="50" width="9" height="18" rx="4.5" fill="#0b8043"/>
+        <rect x="93" y="50" width="9" height="18" rx="4.5" fill="#0b8043"/>
+        <!-- 頭 -->
+        <rect x="27" y="30" width="66" height="54" rx="17" fill="#ffffff" stroke="#0b8043" stroke-width="3"/>
+        <!-- 目 -->
+        <circle cx="47" cy="53" r="6" fill="#0b8043"/>
+        <circle cx="73" cy="53" r="6" fill="#0b8043"/>
+        <!-- 口 -->
+        <path d="M50 68 Q60 76 70 68" stroke="#0b8043" stroke-width="3" stroke-linecap="round"/>
+        <!-- 体 -->
+        <rect x="40" y="88" width="40" height="20" rx="9" fill="#ffffff" stroke="#0b8043" stroke-width="3"/>
+      </svg>
+
+      <div class="thinking-text">考え中<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+    </div>
   </div>
 
   <script>
@@ -60,6 +162,13 @@
       return div;
     }
 
+    // 回答待ちの表示（背景をぼかしてロボットのアニメーションを出す）
+    function setThinking(on) {
+      document.getElementById('app').classList.toggle('thinking', on);
+      document.getElementById('overlay').hidden = !on;
+      document.getElementById('send').disabled = on;
+    }
+
     function ask() {
       var input = document.getElementById('input');
       var question = input.value.trim();
@@ -68,22 +177,17 @@
       addMsg(question, 'q');
       input.value = '';
       input.style.height = 'auto';
-      document.getElementById('send').disabled = true;
-
-      // 回答待ちのプレースホルダ
-      var loading = addMsg('考え中...', 'a loading');
+      input.blur(); // スマホでキーボードを閉じてアニメーションを見せる
+      setThinking(true);
 
       google.script.run
         .withSuccessHandler(function (answer) {
-          loading.className = 'msg a';
-          loading.innerHTML = esc(answer);
-          logEl.scrollTop = logEl.scrollHeight;
-          document.getElementById('send').disabled = false;
+          setThinking(false);
+          addMsg(answer, 'a');
         })
         .withFailureHandler(function (err) {
-          loading.className = 'msg a';
-          loading.innerHTML = esc('エラー: ' + err.message);
-          document.getElementById('send').disabled = false;
+          setThinking(false);
+          addMsg('エラー: ' + err.message, 'a');
         })
         .askWorkRules(question);
     }
