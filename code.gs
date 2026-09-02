@@ -129,6 +129,16 @@ function getSheet_(name) {
 }
 
 /* ============================================================
+ * 利用者向けエラーメッセージ
+ * 専門用語は画面に出さず、詳細は Logger（実行ログ）に残す。
+ * ============================================================ */
+
+// 一時的な失敗：再送信を促す
+var USER_ERROR_RETRY = 'エラーが発生しました。もう一度送信してください。';
+// 設定不備など、利用者が再送しても直らない場合
+var USER_ERROR_CONTACT = 'ただいまご利用いただけません。管理者にお問い合わせください。';
+
+/* ============================================================
  * PDF OCR 機能（Gemini API）
  * ============================================================ */
 
@@ -177,7 +187,8 @@ function ocrPdfWithGemini(fileId) {
     // APIキーをスクリプトプロパティから取得
     var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) {
-      return 'エラー: APIキーが未設定です。setupApiKey() を実行してください。';
+      Logger.log('GEMINI_API_KEY が未設定です。setupApiKey() を実行してください。');
+      return USER_ERROR_CONTACT;
     }
 
     // ファイルを取得して Base64 エンコード（PDF・画像どちらも対応）
@@ -223,20 +234,23 @@ function ocrPdfWithGemini(fileId) {
     var body = response.getContentText();
 
     if (code !== 200) {
-      return 'エラー: APIリクエスト失敗 (HTTP ' + code + ') ' + body;
+      Logger.log('Gemini APIリクエスト失敗 (HTTP ' + code + ') ' + body);
+      return USER_ERROR_RETRY;
     }
 
     // レスポンスからテキストを取り出す
     var json = JSON.parse(body);
     if (!json.candidates || !json.candidates.length) {
-      return 'エラー: OCR結果が取得できませんでした。' + body;
+      Logger.log('OCR結果が取得できませんでした: ' + body);
+      return USER_ERROR_RETRY;
     }
     var text = json.candidates[0].content.parts[0].text;
     return text;
 
   } catch (e) {
-    // 例外はthrowせずメッセージ文字列で返す
-    return 'エラー: ' + e.message;
+    // 技術的な詳細はログにだけ残し、画面には平易な文言を返す
+    Logger.log('ocrPdfWithGemini エラー: ' + e.message);
+    return USER_ERROR_RETRY;
   }
 }
 
@@ -253,10 +267,11 @@ function ocrUploadedPdf(base64Data, mimeType) {
     // APIキーをスクリプトプロパティから取得
     var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) {
-      return 'エラー: APIキーが未設定です。setupApiKey() を実行してください。';
+      Logger.log('GEMINI_API_KEY が未設定です。setupApiKey() を実行してください。');
+      return USER_ERROR_CONTACT;
     }
     if (!base64Data) {
-      return 'エラー: ファイルデータが空です。';
+      return 'ファイルが選択されていません。';
     }
     // MIMEタイプ未指定の場合はPDFとして扱う
     mimeType = mimeType || 'application/pdf';
@@ -298,17 +313,20 @@ function ocrUploadedPdf(base64Data, mimeType) {
     var body = response.getContentText();
 
     if (code !== 200) {
-      return 'エラー: APIリクエスト失敗 (HTTP ' + code + ') ' + body;
+      Logger.log('Gemini APIリクエスト失敗 (HTTP ' + code + ') ' + body);
+      return USER_ERROR_RETRY;
     }
 
     var json = JSON.parse(body);
     if (!json.candidates || !json.candidates.length) {
-      return 'エラー: OCR結果が取得できませんでした。' + body;
+      Logger.log('OCR結果が取得できませんでした: ' + body);
+      return USER_ERROR_RETRY;
     }
     return json.candidates[0].content.parts[0].text;
 
   } catch (e) {
-    return 'エラー: ' + e.message;
+    Logger.log('ocrUploadedPdf エラー: ' + e.message);
+    return USER_ERROR_RETRY;
   }
 }
 
@@ -407,17 +425,19 @@ function askWorkRules(question) {
   try {
     question = (question || '').toString().trim();
     if (!question) {
-      return 'エラー: 質問を入力してください。';
+      return '質問を入力してください。';
     }
 
     var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) {
-      return 'エラー: APIキーが未設定です。setupApiKey() を実行してください。';
+      Logger.log('GEMINI_API_KEY が未設定です。setupApiKey() を実行してください。');
+      return USER_ERROR_CONTACT;
     }
 
     var rules = getWorkRules_();
     if (!rules) {
-      return '就労規則がまだ登録されていません。「就労規則」シートのA2以降に本文を貼り付けてください。';
+      Logger.log('「就労規則」シートが空です。A2以降に本文を貼り付けてください。');
+      return '就労規則がまだ登録されていません。管理者にお問い合わせください。';
     }
 
     // プロンプトを組み立てる（指示＋就労規則本文＋質問）
@@ -436,7 +456,9 @@ function askWorkRules(question) {
     return answer;
 
   } catch (e) {
-    return 'エラー: ' + e.message;
+    // 技術的な詳細はログにだけ残し、画面には平易な文言を返す
+    Logger.log('askWorkRules エラー: ' + e.message);
+    return USER_ERROR_RETRY;
   }
 }
 

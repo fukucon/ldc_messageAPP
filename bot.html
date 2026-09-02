@@ -185,9 +185,10 @@
           setThinking(false);
           addMsg(answer, 'a');
         })
-        .withFailureHandler(function (err) {
+        .withFailureHandler(function () {
+          // 通信自体の失敗。詳細は出さず、再送信を促す
           setThinking(false);
-          addMsg('エラー: ' + err.message, 'a');
+          addMsg('エラーが発生しました。もう一度送信してください。', 'a');
         })
         .askWorkRules(question);
     }

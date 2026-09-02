@@ -86,10 +86,10 @@
             lastText = text;
             document.getElementById('save').style.display = 'inline-block';
           })
-          .withFailureHandler(function (err) {
+          .withFailureHandler(function () {
             document.getElementById('status').textContent = '';
             document.getElementById('run').disabled = false;
-            alert('エラー: ' + err.message);
+            alert('エラーが発生しました。もう一度お試しください。');
           })
           .ocrUploadedPdf(base64, file.type || 'application/pdf');
       };
@@ -110,10 +110,10 @@
           document.getElementById('saveStatus').textContent = msg; // 「保存しました」
           document.getElementById('save').disabled = false;
         })
-        .withFailureHandler(function (err) {
+        .withFailureHandler(function () {
           document.getElementById('saveStatus').textContent = '';
           document.getElementById('save').disabled = false;
-          alert('エラー: ' + err.message);
+          alert('保存できませんでした。もう一度お試しください。');
         })
         .saveUploadedOcrResult(lastFileName, lastText);
     }
