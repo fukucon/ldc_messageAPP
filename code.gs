@@ -6,24 +6,28 @@
 
 /**
  * Webアプリのエントリーポイント。
- * URLパラメータ ?app=ocr の場合は OCR画面（ocr.html）、
- * それ以外はチャット画面（index.html）を返す。
+ * デフォルトは就労規則チャットボット（bot.html）。
+ * ?app=chat でチャット画面、?app=ocr で OCR画面（どちらも非表示の隠し機能として残す）。
  */
 function doGet(e) {
-  if (e && e.parameter && e.parameter.app === 'ocr') {
+  var app = (e && e.parameter && e.parameter.app) || '';
+
+  if (app === 'ocr') {
     return HtmlService.createHtmlOutputFromFile('ocr')
       .setTitle('OCR (PDF / 画像)')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
-  if (e && e.parameter && e.parameter.app === 'bot') {
-    return HtmlService.createHtmlOutputFromFile('bot')
-      .setTitle('就労規則チャットボット')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  if (app === 'chat') {
+    return HtmlService.createHtmlOutputFromFile('index')
+      .setTitle('LDC Chat')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
-  return HtmlService.createHtmlOutputFromFile('index')
-    .setTitle('LDC Chat')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+
+  // デフォルト：就労規則チャットボット
+  return HtmlService.createHtmlOutputFromFile('bot')
+    .setTitle('就労規則チャットボット')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 /**

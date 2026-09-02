@@ -30,7 +30,6 @@
 <body>
   <header>
     <div class="title">就労規則チャットボット</div>
-    <a href="#" id="toChat">← チャットに戻る</a>
   </header>
 
   <div id="log">
@@ -43,14 +42,6 @@
   </div>
 
   <script>
-    // チャット画面に戻る
-    google.script.run.withSuccessHandler(function (url) {
-      document.getElementById('toChat').onclick = function (ev) {
-        ev.preventDefault();
-        window.top.location.href = url;
-      };
-    }).getWebAppUrl();
-
     var logEl = document.getElementById('log');
 
     function esc(s) {
