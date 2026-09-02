@@ -57,3 +57,33 @@ function setupSheet_(ss, name, header) {
 
   return sheet;
 }
+
+// 就労規則チャットボット用のシート名
+var RULES_SHEET = '就労規則';
+var BOT_LOG_SHEET = '質問ログ';
+
+/**
+ * 就労規則チャットボット用のシートを生成する。
+ * 初回に一度だけ手動実行してください。
+ * - 「就労規則」シート: A2以降に就労規則の本文を貼り付ける
+ * - 「質問ログ」シート: 社員の質問と回答を自動記録する
+ */
+function setupBot() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+
+  // 就労規則シート（1行目は説明、2行目以降に本文を貼る）
+  var rules = ss.getSheetByName(RULES_SHEET);
+  if (!rules) {
+    rules = ss.insertSheet(RULES_SHEET);
+  }
+  var head = rules.getRange(1, 1);
+  head.setValue('▼この下(A2以降)に就労規則の本文を貼り付けてください');
+  head.setFontWeight('bold').setBackground('#fbbc04');
+  rules.setFrozenRows(1);
+
+  // 質問ログシート
+  setupSheet_(ss, BOT_LOG_SHEET, ['日時', '社員', '質問', '回答']);
+
+  SpreadsheetApp.flush();
+  Logger.log('setupBot 完了');
+}

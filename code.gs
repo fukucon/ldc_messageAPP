@@ -12,7 +12,12 @@
 function doGet(e) {
   if (e && e.parameter && e.parameter.app === 'ocr') {
     return HtmlService.createHtmlOutputFromFile('ocr')
-      .setTitle('PDF OCR')
+      .setTitle('OCR (PDF / 画像)')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
+  if (e && e.parameter && e.parameter.app === 'bot') {
+    return HtmlService.createHtmlOutputFromFile('bot')
+      .setTitle('就労規則チャットボット')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
   return HtmlService.createHtmlOutputFromFile('index')
@@ -350,4 +355,140 @@ function saveOcrResult(fileId, ocrText) {
 
   sheet.appendRow([new Date(), fileId, fileName, ocrText]);
   return '保存しました';
+}
+
+/* ============================================================
+ * 就労規則チャットボット（Gemini API）
+ * ============================================================ */
+
+// ボットへの基本指示（就労規則の範囲だけで答えさせる）
+var BOT_SYSTEM_INSTRUCTION =
+  'あなたは会社の就労規則に関する社内アシスタントです。' +
+  '以下に示す「就労規則」の内容だけに基づいて、社員の質問に日本語でわかりやすく回答してください。' +
+  '就労規則に書かれていない事項については推測せず、「就労規則には記載がありません。担当部署にご確認ください。」と答えてください。' +
+  '可能であれば、根拠となる条文や項目名も添えてください。';
+
+/**
+ * 「就労規則」シートから本文を読み込んで1つの文字列にする。
+ * 1行目は説明行のため除外し、2行目以降を連結する。
+ * @return {string} 就労規則の全文（未登録なら空文字）
+ */
+function getWorkRules_() {
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(RULES_SHEET);
+  if (!sheet) {
+    return '';
+  }
+  var values = sheet.getDataRange().getValues();
+  var lines = [];
+  // i=1 から（1行目の説明を除外）
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i]
+      .filter(function (c) { return c !== '' && c !== null; })
+      .join(' ');
+    if (row) {
+      lines.push(row);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * 就労規則についての質問に回答する。
+ * 就労規則の全文＋質問を Gemini に渡し、回答テキストを返す。
+ * エラー時は例外をthrowせず、エラーメッセージ文字列を返す。
+ * @param {string} question 社員からの質問
+ * @return {string} 回答テキスト（または失敗時のエラーメッセージ）
+ */
+function askWorkRules(question) {
+  try {
+    question = (question || '').toString().trim();
+    if (!question) {
+      return 'エラー: 質問を入力してください。';
+    }
+
+    var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (!apiKey) {
+      return 'エラー: APIキーが未設定です。setupApiKey() を実行してください。';
+    }
+
+    var rules = getWorkRules_();
+    if (!rules) {
+      return '就労規則がまだ登録されていません。「就労規則」シートのA2以降に本文を貼り付けてください。';
+    }
+
+    // プロンプトを組み立てる（指示＋就労規則本文＋質問）
+    var prompt =
+      BOT_SYSTEM_INSTRUCTION +
+      '\n\n===== 就労規則ここから =====\n' +
+      rules +
+      '\n===== 就労規則ここまで =====\n\n' +
+      '【社員からの質問】\n' + question;
+
+    var answer = callGeminiText_(prompt, apiKey);
+
+    // 質問と回答をログシートに記録する
+    logBotQa_(question, answer);
+
+    return answer;
+
+  } catch (e) {
+    return 'エラー: ' + e.message;
+  }
+}
+
+/**
+ * Gemini にテキストプロンプトを送り、回答テキストを返す内部ヘルパー。
+ * @param {string} promptText プロンプト全文
+ * @param {string} apiKey     APIキー
+ * @return {string} 回答テキスト
+ */
+function callGeminiText_(promptText, apiKey) {
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
+  var payload = {
+    contents: [
+      { parts: [{ text: promptText }] }
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 2048,
+      thinkingConfig: { thinkingBudget: 0 }
+    }
+  };
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var response = UrlFetchApp.fetch(url, options);
+  var code = response.getResponseCode();
+  var body = response.getContentText();
+  if (code !== 200) {
+    throw new Error('APIリクエスト失敗 (HTTP ' + code + ') ' + body);
+  }
+
+  var json = JSON.parse(body);
+  if (!json.candidates || !json.candidates.length ||
+      !json.candidates[0].content || !json.candidates[0].content.parts) {
+    throw new Error('回答が取得できませんでした。' + body);
+  }
+  return json.candidates[0].content.parts[0].text;
+}
+
+/**
+ * 質問と回答を「質問ログ」シートに記録する。失敗しても本処理は止めない。
+ */
+function logBotQa_(question, answer) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(BOT_LOG_SHEET);
+    if (!sheet) {
+      sheet = ss.insertSheet(BOT_LOG_SHEET);
+      sheet.appendRow(['日時', '社員', '質問', '回答']);
+    }
+    sheet.appendRow([new Date(), getCurrentUser(), question, answer]);
+  } catch (e) {
+    // ログ失敗は無視
+  }
 }

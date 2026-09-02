@@ -81,6 +81,7 @@
   <header>
     <span class="back" id="back">‹</span>
     <span class="title" id="title">LDC Chat</span>
+    <button class="ocr-btn" id="botBtn">規約</button>
     <button class="ocr-btn" id="ocrBtn">OCR</button>
     <span class="user" id="me"></span>
   </header>
@@ -235,6 +236,11 @@
     $('ocrBtn').addEventListener('click', function () {
       if (!ocrUrl) return;
       window.top.location.href = ocrUrl + '?app=ocr';
+    });
+    // 就労規則ボットへの遷移
+    $('botBtn').addEventListener('click', function () {
+      if (!ocrUrl) return;
+      window.top.location.href = ocrUrl + '?app=bot';
     });
 
     // ---- 初期化 ----
