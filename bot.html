@@ -23,7 +23,6 @@
     .msg { max-width: 85%; padding: 10px 13px; border-radius: 14px; font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
     .msg.q { align-self: flex-end; background: #0b8043; color: #fff; border-bottom-right-radius: 4px; }
     .msg.a { align-self: flex-start; background: #fff; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
-    .hint { text-align: center; color: #9aa0a6; font-size: 13px; margin: 16px 8px; line-height: 1.6; }
 
     .composer { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px; background: #fff; border-top: 1px solid #e0e0e0; }
     .composer textarea { flex: 1; resize: none; border: 1px solid #ccc; border-radius: 20px; padding: 10px 14px; font-size: 15px; max-height: 100px; font-family: inherit; }
@@ -131,9 +130,7 @@
       <button class="hist-btn" id="histBtn" onclick="openHistory()">質問履歴</button>
     </header>
 
-    <div id="log">
-      <div class="hint">就労規則についての質問を入力してください。<br>例：「有給休暇は何日ありますか？」「遅刻したときのルールは？」</div>
-    </div>
+    <div id="log"></div>
 
     <div class="composer">
       <textarea id="input" rows="1" placeholder="質問を入力"></textarea>
