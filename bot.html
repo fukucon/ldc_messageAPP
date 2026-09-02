@@ -14,9 +14,10 @@
     .app { display: flex; flex-direction: column; height: 100%; transition: filter .35s ease; }
     .app.thinking { filter: blur(5px); pointer-events: none; }
 
-    header { flex: 0 0 auto; background: #0b8043; color: #fff; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-    header .title { font-size: 16px; font-weight: 600; }
-    header a { color: #fff; font-size: 12px; opacity: .9; text-decoration: none; }
+    header { flex: 0 0 auto; background: #0b8043; color: #fff; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.2); display: flex; align-items: center; gap: 8px; }
+    header .title { font-size: 16px; font-weight: 600; flex: 1; }
+    header .hist-btn { flex: 0 0 auto; background: rgba(255,255,255,.2); color: #fff; border: none; border-radius: 16px; padding: 7px 13px; font-size: 13px; cursor: pointer; }
+    header .hist-btn:active { background: rgba(255,255,255,.35); }
 
     #log { flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
     .msg { max-width: 85%; padding: 10px 13px; border-radius: 14px; font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
@@ -87,6 +88,34 @@
     .thinking-text .dot:nth-of-type(3) { animation-delay: .4s; }
     @keyframes dotFade { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
 
+    /* ===== 質問履歴パネル ===== */
+    .history {
+      position: fixed; inset: 0; z-index: 20;
+      background: #fff; display: flex; flex-direction: column;
+    }
+    /* hidden属性を確実に効かせる */
+    .history[hidden] { display: none; }
+
+    .history-head {
+      flex: 0 0 auto; background: #0b8043; color: #fff;
+      padding: 12px 14px; display: flex; align-items: center; gap: 8px;
+      font-size: 16px; font-weight: 600;
+    }
+    .history-head span { flex: 1; }
+    .history-head button { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 0 4px; }
+
+    .history-list { flex: 1 1 auto; overflow-y: auto; }
+    .hist-item {
+      display: block; width: 100%; text-align: left;
+      background: #fff; border: none; border-bottom: 1px solid #e8eaed;
+      padding: 14px 16px; font: inherit; cursor: pointer;
+    }
+    .hist-item:active { background: #e8f5ee; }
+    .hist-q { display: block; font-size: 15px; color: #202124; line-height: 1.5; }
+    .hist-at { display: block; font-size: 12px; color: #80868b; margin-top: 4px; }
+    .hist-empty { padding: 28px 16px; text-align: center; color: #9aa0a6; font-size: 14px; }
+    .hist-note { padding: 10px 16px; background: #f8f9fa; color: #5f6368; font-size: 12px; border-bottom: 1px solid #e8eaed; }
+
     /* 動きを減らす設定の端末では控えめにする */
     @media (prefers-reduced-motion: reduce) {
       .glow, .bubble, .robot, .antenna-dot, .thinking-text .dot { animation: none; }
@@ -99,6 +128,7 @@
   <div class="app" id="app">
     <header>
       <div class="title">就労規則チャットボット</div>
+      <button class="hist-btn" id="histBtn" onclick="openHistory()">質問履歴</button>
     </header>
 
     <div id="log">
@@ -145,6 +175,16 @@
     </div>
   </div>
 
+  <!-- 質問履歴パネル：タップすると同じ質問をもう一度送れる -->
+  <div class="history" id="history" hidden>
+    <div class="history-head">
+      <span>質問履歴</span>
+      <button id="histClose" onclick="closeHistory()" aria-label="閉じる">✕</button>
+    </div>
+    <div class="hist-note">タップすると同じ質問をもう一度送信します</div>
+    <div class="history-list" id="histList"></div>
+  </div>
+
   <script>
     var logEl = document.getElementById('log');
 
@@ -171,15 +211,21 @@
       document.getElementById('send').disabled = on;
     }
 
+    // 入力欄から送信する
     function ask() {
       var input = document.getElementById('input');
       var question = input.value.trim();
       if (!question) return;
 
-      addMsg(question, 'q');
       input.value = '';
       input.style.height = 'auto';
       input.blur(); // スマホでキーボードを閉じてアニメーションを見せる
+      askQuestion(question);
+    }
+
+    // 質問を送信する（入力欄・履歴の両方から使う）
+    function askQuestion(question) {
+      addMsg(question, 'q');
       setThinking(true);
 
       google.script.run
@@ -193,6 +239,64 @@
           addMsg('エラーが発生しました。もう一度送信してください。', 'a');
         })
         .askWorkRules(question);
+    }
+
+    /* ===== 質問履歴 ===== */
+
+    function fmtDate(ms) {
+      if (!ms) return '';
+      var d = new Date(ms);
+      var p = function (n) { return ('0' + n).slice(-2); };
+      return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    function openHistory() {
+      var list = document.getElementById('histList');
+      list.innerHTML = '<div class="hist-empty">読み込み中...</div>';
+      document.getElementById('history').hidden = false;
+
+      google.script.run
+        .withSuccessHandler(renderHistory)
+        .withFailureHandler(function () {
+          list.innerHTML = '<div class="hist-empty">履歴を読み込めませんでした。<br>もう一度お試しください。</div>';
+        })
+        .getQuestionHistory();
+    }
+
+    function closeHistory() {
+      document.getElementById('history').hidden = true;
+    }
+
+    function renderHistory(items) {
+      var list = document.getElementById('histList');
+      if (!items || !items.length) {
+        list.innerHTML = '<div class="hist-empty">まだ質問履歴がありません。</div>';
+        return;
+      }
+      list.innerHTML = '';
+      items.forEach(function (it) {
+        var row = document.createElement('button');
+        row.className = 'hist-item';
+
+        var q = document.createElement('span');
+        q.className = 'hist-q';
+        q.textContent = it.question;
+
+        var at = document.createElement('span');
+        at.className = 'hist-at';
+        at.textContent = fmtDate(it.at);
+
+        row.appendChild(q);
+        row.appendChild(at);
+
+        // タップで同じ質問をもう一度送信する
+        row.addEventListener('click', function () {
+          closeHistory();
+          askQuestion(it.question);
+        });
+
+        list.appendChild(row);
+      });
     }
 
     // 入力欄の自動リサイズ・Enter送信（Shift+Enterで改行）

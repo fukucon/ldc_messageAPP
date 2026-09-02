@@ -458,7 +458,48 @@ function askWorkRules(question) {
   } catch (e) {
     // 技術的な詳細はログにだけ残し、画面には平易な文言を返す
     Logger.log('askWorkRules エラー: ' + e.message);
+    // 失敗した質問も履歴に残す
+    logBotQa_(question, USER_ERROR_RETRY);
     return USER_ERROR_RETRY;
+  }
+}
+
+/**
+ * ログイン中の社員の質問履歴を新しい順に取得する。
+ * 同じ内容の質問は重複を除き、最大50件返す。
+ * @return {Array<Object>} [{question, at}] at はエポックミリ秒
+ */
+function getQuestionHistory() {
+  try {
+    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BOT_LOG_SHEET);
+    if (!sheet) {
+      return [];
+    }
+    var values = sheet.getDataRange().getValues();
+    var user = getCurrentUser();
+    var seen = {};
+    var list = [];
+
+    // 新しい順に走査（1行目はヘッダーなので除外）
+    for (var i = values.length - 1; i >= 1; i--) {
+      var row = values[i];
+      if (row[1] !== user) continue; // 自分の質問のみ
+
+      var q = (row[2] || '').toString().trim();
+      if (!q || seen[q]) continue;   // 空・重複は除外
+      seen[q] = true;
+
+      list.push({
+        question: q,
+        at: row[0] ? new Date(row[0]).getTime() : 0
+      });
+      if (list.length >= 50) break;
+    }
+    return list;
+
+  } catch (e) {
+    Logger.log('getQuestionHistory エラー: ' + e.message);
+    return [];
   }
 }
 
