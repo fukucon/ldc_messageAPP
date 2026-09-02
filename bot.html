@@ -36,6 +36,8 @@
       background: rgba(241, 243, 244, .55);
       animation: fadeIn .3s ease;
     }
+    /* hidden属性を確実に効かせる（.overlay の display:flex に打ち消されないように） */
+    .overlay[hidden] { display: none; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .thinker { position: relative; display: flex; flex-direction: column; align-items: center; }
