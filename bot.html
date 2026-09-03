@@ -198,8 +198,9 @@
   </div>
 
   <script>
-    // サーバー側から埋め込まれたカテゴリ情報
-    // <?!= ?> はHTMLエスケープされない出力（<?= ?> だとJSONが壊れる）
+    // サーバー側から埋め込まれたカテゴリ情報。
+    // 埋め込みは必ずエスケープなしの出力記法で行うこと。
+    // ※このコメント内にスクリプトレット記法を書かないこと（テンプレートが壊れる）
     var CATEGORY = <?!= categoryJson ?>;
     var CATEGORY_ID = CATEGORY.id;
     var CATEGORY_NAME = CATEGORY.name;
