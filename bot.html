@@ -199,8 +199,10 @@
 
   <script>
     // サーバー側から埋め込まれたカテゴリ情報
-    var CATEGORY_ID = '<?= categoryId ?>';
-    var CATEGORY_NAME = '<?= categoryName ?>';
+    // <?!= ?> はHTMLエスケープされない出力（<?= ?> だとJSONが壊れる）
+    var CATEGORY = <?!= categoryJson ?>;
+    var CATEGORY_ID = CATEGORY.id;
+    var CATEGORY_NAME = CATEGORY.name;
 
     document.getElementById('catLabel').textContent = CATEGORY_NAME;
     document.getElementById('histTitle').textContent = CATEGORY_NAME + 'の質問履歴';

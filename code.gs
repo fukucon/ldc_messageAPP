@@ -37,8 +37,7 @@ function doGet(e) {
     }
     // カテゴリ情報を埋め込んで返す（iframe内からURLを読めないため）
     var page = HtmlService.createTemplateFromFile('bot');
-    page.categoryId = category.id;
-    page.categoryName = category.name;
+    page.categoryJson = JSON.stringify({ id: category.id, name: category.name });
     return page.evaluate()
       .setTitle('AIチャットボット｜' + category.name)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');

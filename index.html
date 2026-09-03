@@ -82,7 +82,8 @@
 
   <script>
     // サーバー側から埋め込まれたカテゴリ定義
-    var CATEGORIES = <?= categoriesJson ?>;
+    // <?!= ?> はHTMLエスケープされない出力。<?= ?> だとJSONの " が &quot; になり壊れる
+    var CATEGORIES = <?!= categoriesJson ?>;
 
     // 画面遷移用にWebアプリのURLを取得しておく
     var webAppUrl = '';
@@ -91,6 +92,14 @@
     // メニューを描画する
     (function renderMenu() {
       var menu = document.getElementById('menu');
+
+      // 万一カテゴリを受け取れなかった場合に白画面にしない
+      if (!Array.isArray(CATEGORIES) || !CATEGORIES.length) {
+        menu.innerHTML = '<p class="lead">メニューを読み込めませんでした。'
+          + 'ページを再読み込みしてください。</p>';
+        return;
+      }
+
       CATEGORIES.forEach(function (c) {
         var btn = document.createElement('button');
         btn.className = 'menu-item';
