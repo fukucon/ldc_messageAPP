@@ -17,6 +17,11 @@ function doGet(e) {
       .setTitle('OCR (PDF / 画像)')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
+  if (app === 'settings') {
+    return HtmlService.createHtmlOutputFromFile('settings')
+      .setTitle('チャットボット設定')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
   if (app === 'chat') {
     return HtmlService.createHtmlOutputFromFile('index')
       .setTitle('LDC Chat')
@@ -435,17 +440,28 @@ function askWorkRules(question) {
     }
 
     var rules = getWorkRules_();
-    if (!rules) {
-      Logger.log('「就労規則」シートが空です。A2以降に本文を貼り付けてください。');
+    // 設定画面で追加された指示・ルールを読み込む
+    var settings = getBotSettings();
+
+    if (!rules && !settings.extraRules) {
+      Logger.log('「就労規則」シートと追加ルールがどちらも空です。');
       return '就労規則がまだ登録されていません。管理者にお問い合わせください。';
     }
 
-    // プロンプトを組み立てる（指示＋就労規則本文＋質問）
-    var prompt =
-      BOT_SYSTEM_INSTRUCTION +
-      '\n\n===== 就労規則ここから =====\n' +
-      rules +
-      '\n===== 就労規則ここまで =====\n\n' +
+    // プロンプトを組み立てる（指示＋追加指示＋就労規則＋追加ルール＋質問）
+    var prompt = BOT_SYSTEM_INSTRUCTION;
+
+    if (settings.extraInstruction) {
+      prompt += '\n\n【追加の指示】\n' + settings.extraInstruction;
+    }
+
+    prompt += '\n\n===== 就労規則ここから =====\n' + rules;
+
+    if (settings.extraRules) {
+      prompt += '\n\n----- 追加ルール（就労規則を補足する社内ルール） -----\n' + settings.extraRules;
+    }
+
+    prompt += '\n===== 就労規則ここまで =====\n\n' +
       '【社員からの質問】\n' + question;
 
     var answer = callGeminiText_(prompt, apiKey);
@@ -460,6 +476,111 @@ function askWorkRules(question) {
     Logger.log('askWorkRules エラー: ' + e.message);
     // 失敗した質問も履歴に残す
     logBotQa_(question, USER_ERROR_RETRY);
+    return USER_ERROR_RETRY;
+  }
+}
+
+/* ===== 設定（AIへの追加指示・就業規則への追記ルール） ===== */
+
+// 設定画面で保存できる管理者のメールアドレス。
+// 空配列のままなら、設定画面のURLを知っている人は誰でも保存できる。
+// 例: var ADMIN_EMAILS = ['soumu@example.com', 'hr@example.com'];
+var ADMIN_EMAILS = [];
+
+/**
+ * 現在のユーザーが設定を保存できるかどうか。
+ */
+function isAdmin_() {
+  if (!ADMIN_EMAILS.length) {
+    return true; // 未設定なら制限しない
+  }
+  var me = (getCurrentUser() || '').toLowerCase();
+  for (var i = 0; i < ADMIN_EMAILS.length; i++) {
+    if (String(ADMIN_EMAILS[i]).toLowerCase() === me) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 設定シートを取得する（無ければ作成する）。
+ */
+function getSettingsSheet_() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(SETTINGS_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(SETTINGS_SHEET);
+    sheet.appendRow(['項目', '内容']);
+    sheet.appendRow([SETTING_INSTRUCTION, '']);
+    sheet.appendRow([SETTING_EXTRA_RULES, '']);
+  }
+  return sheet;
+}
+
+/**
+ * 設定シートから項目名で値を読む。
+ */
+function readSetting_(sheet, key) {
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0] === key) {
+      return (values[i][1] || '').toString();
+    }
+  }
+  return '';
+}
+
+/**
+ * 設定シートに項目名で値を書く（無ければ行を追加する）。
+ */
+function writeSetting_(sheet, key, value) {
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0] === key) {
+      sheet.getRange(i + 1, 2).setValue(value);
+      return;
+    }
+  }
+  sheet.appendRow([key, value]);
+}
+
+/**
+ * 設定画面用：現在の設定を取得する。
+ * @return {Object} {extraInstruction, extraRules, rulesLength, canEdit}
+ */
+function getBotSettings() {
+  try {
+    var sheet = getSettingsSheet_();
+    return {
+      extraInstruction: readSetting_(sheet, SETTING_INSTRUCTION),
+      extraRules: readSetting_(sheet, SETTING_EXTRA_RULES),
+      rulesLength: getWorkRules_().length, // 就労規則シート本体の文字数（目安表示用）
+      canEdit: isAdmin_()
+    };
+  } catch (e) {
+    Logger.log('getBotSettings エラー: ' + e.message);
+    return { extraInstruction: '', extraRules: '', rulesLength: 0, canEdit: false };
+  }
+}
+
+/**
+ * 設定画面用：設定を保存する。
+ * @param {Object} settings {extraInstruction, extraRules}
+ * @return {string} 画面に出すメッセージ
+ */
+function saveBotSettings(settings) {
+  try {
+    if (!isAdmin_()) {
+      return '保存する権限がありません。管理者にお問い合わせください。';
+    }
+    settings = settings || {};
+    var sheet = getSettingsSheet_();
+    writeSetting_(sheet, SETTING_INSTRUCTION, (settings.extraInstruction || '').toString());
+    writeSetting_(sheet, SETTING_EXTRA_RULES, (settings.extraRules || '').toString());
+    return '保存しました';
+  } catch (e) {
+    Logger.log('saveBotSettings エラー: ' + e.message);
     return USER_ERROR_RETRY;
   }
 }

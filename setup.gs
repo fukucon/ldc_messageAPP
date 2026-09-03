@@ -61,6 +61,11 @@ function setupSheet_(ss, name, header) {
 // 就労規則チャットボット用のシート名
 var RULES_SHEET = '就労規則';
 var BOT_LOG_SHEET = '質問ログ';
+var SETTINGS_SHEET = '設定';
+
+// 設定シートの項目名（この名前でキーを探す）
+var SETTING_INSTRUCTION = '追加指示';
+var SETTING_EXTRA_RULES = '追加ルール';
 
 /**
  * 就労規則チャットボット用のシートを生成する。
@@ -83,6 +88,15 @@ function setupBot() {
 
   // 質問ログシート
   setupSheet_(ss, BOT_LOG_SHEET, ['日時', '社員', '質問', '回答']);
+
+  // 設定シート（設定画面から編集する内容の保存先）
+  var settings = ss.getSheetByName(SETTINGS_SHEET);
+  if (!settings) {
+    settings = setupSheet_(ss, SETTINGS_SHEET, ['項目', '内容']);
+    settings.appendRow([SETTING_INSTRUCTION, '']);
+    settings.appendRow([SETTING_EXTRA_RULES, '']);
+    settings.setColumnWidth(2, 600);
+  }
 
   SpreadsheetApp.flush();
   Logger.log('setupBot 完了');
