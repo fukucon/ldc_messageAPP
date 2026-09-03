@@ -4,7 +4,7 @@
   <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>チャットボット設定</title>
+  <title>AIチャットボット設定</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -15,7 +15,20 @@
     header .title { font-size: 16px; font-weight: 600; flex: 1; }
     header a { color: #fff; font-size: 13px; text-decoration: none; background: rgba(255,255,255,.2); border-radius: 16px; padding: 7px 13px; }
 
-    main { max-width: 720px; margin: 0 auto; padding: 16px; }
+    main { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; }
+
+    .note { font-size: 13px; color: #5f6368; line-height: 1.7; background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
+    .note[hidden] { display: none; }
+
+    /* カテゴリ切り替えタブ */
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; }
+    .tab {
+      flex: 0 0 auto; border: 1px solid #cfd8dc; background: #fff; color: #3c4043;
+      border-radius: 20px; padding: 9px 18px; font-size: 14px; cursor: pointer; font-family: inherit;
+    }
+    .tab.active { background: #0b8043; border-color: #0b8043; color: #fff; font-weight: 600; }
+
+    .panel[hidden] { display: none; }
 
     .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
     .card h2 { margin: 0 0 6px; font-size: 15px; color: #0b8043; }
@@ -29,16 +42,18 @@
     }
     textarea:disabled { background: #f5f5f5; color: #80868b; }
 
-    .actions { display: flex; align-items: center; gap: 12px; }
-    button {
-      background: #0b8043; color: #fff; border: none; border-radius: 8px;
-      padding: 12px 24px; font-size: 15px; cursor: pointer;
+    /* 画面下に固定した保存バー */
+    .savebar {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+      background: #fff; border-top: 1px solid #e0e0e0; padding: 12px 16px;
+      display: flex; align-items: center; gap: 12px; justify-content: center;
     }
-    button:disabled { opacity: .5; cursor: default; }
+    .savebar button {
+      background: #0b8043; color: #fff; border: none; border-radius: 8px;
+      padding: 12px 28px; font-size: 15px; cursor: pointer;
+    }
+    .savebar button:disabled { opacity: .5; cursor: default; }
     #status { font-size: 14px; color: #0b8043; }
-
-    .note { font-size: 13px; color: #5f6368; line-height: 1.7; background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
-    .warn { background: #fdecea; border-color: #f5c6c2; color: #b3261e; }
 
     /* ===== パスワードによるロック画面 ===== */
     .lock { position: fixed; inset: 0; z-index: 30; background: #f1f3f4; display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -68,8 +83,8 @@
   </div>
 
   <header>
-    <div class="title">チャットボット設定</div>
-    <a href="#" id="toBot">チャットへ →</a>
+    <div class="title">AIチャットボット設定</div>
+    <a href="#" id="toMenu">メニューへ →</a>
   </header>
 
   <main>
@@ -78,48 +93,27 @@
     </div>
 
     <div class="note">
-      就労規則の本文そのものは、スプレッドシートの「<strong>就労規則</strong>」シートで編集してください。
-      この画面では、それに<strong>追加する指示とルール</strong>を設定します。
-      <span id="rulesInfo"></span>
+      規程の本文そのものは、スプレッドシートの各シートで編集してください。
+      この画面では、カテゴリごとに<strong>追加する指示とルール</strong>を設定します。
     </div>
 
-    <div class="card">
-      <h2>AIへの追加指示</h2>
-      <p class="desc">
-        回答の仕方についての指示を追加できます。ここに書いた内容は、質問のたびにAIへ一緒に送られます。
-      </p>
-      <textarea id="extraInstruction" placeholder="例：回答は3行以内で簡潔にまとめてください。"></textarea>
-      <p class="example">
-        例：「回答の最後に必ず担当部署の連絡先（総務部 内線123）を添えてください。」<br>
-        例：「専門用語は使わず、新入社員にもわかる言葉で説明してください。」
-      </p>
-    </div>
-
-    <div class="card">
-      <h2>追加ルール（就業規則への追記）</h2>
-      <p class="desc">
-        就労規則には書かれていない社内ルールや運用を追記できます。AIは就労規則本文とあわせて、ここの内容も根拠として回答します。
-      </p>
-      <textarea id="extraRules" placeholder="例：有給申請は3営業日前までに勤怠システムから申請すること。"></textarea>
-      <p class="example">
-        例：「在宅勤務は週2日まで。前日までに上長へ申請すること。」<br>
-        例：「慶弔見舞金の申請書は社内ポータルの様式集にあります。」
-      </p>
-    </div>
-
-    <div class="actions">
-      <button id="save" onclick="save()">保存する</button>
-      <span id="status"></span>
-    </div>
+    <div class="tabs" id="tabs"></div>
+    <div id="panels"></div>
   </main>
+
+  <div class="savebar">
+    <button id="save" onclick="save()">すべて保存する</button>
+    <span id="status"></span>
+  </div>
 
   <script>
     var canEdit = false;
-    var password = '';   // 認証済みのパスワードを保持（保存時に一緒に送る）
+    var password = '';    // 認証済みのパスワードを保持（保存時に一緒に送る）
+    var categories = [];  // サーバーから取得したカテゴリ別設定
 
-    // チャット画面へ戻る
+    // メニュー画面へ戻る
     google.script.run.withSuccessHandler(function (url) {
-      document.getElementById('toBot').onclick = function (ev) {
+      document.getElementById('toMenu').onclick = function (ev) {
         ev.preventDefault();
         window.top.location.href = url;
       };
@@ -127,7 +121,6 @@
 
     /* ===== ロック解除 ===== */
 
-    // ロック画面から解除する
     function unlock() {
       var pw = document.getElementById('lockPw').value;
       var err = document.getElementById('lockErr');
@@ -163,25 +156,8 @@
         .getBotSettings(pw);
     }
 
-    // 読み込んだ設定を画面に反映する
-    function applySettings(s) {
-      document.getElementById('extraInstruction').value = s.extraInstruction || '';
-      document.getElementById('extraRules').value = s.extraRules || '';
-      document.getElementById('rulesInfo').textContent =
-        '現在の就労規則の登録量：約' + (s.rulesLength || 0).toLocaleString() + '文字。';
-
-      canEdit = !!s.canEdit;
-      if (!canEdit) {
-        document.getElementById('readonlyNote').hidden = false;
-        document.getElementById('extraInstruction').disabled = true;
-        document.getElementById('extraRules').disabled = true;
-        document.getElementById('save').disabled = true;
-      }
-      document.getElementById('status').textContent = '';
-    }
-
     // チャット画面でパスワードを入力済みなら、そのまま開く
-    function load() {
+    (function load() {
       var saved = '';
       try { saved = sessionStorage.getItem('ldcSettingsPw') || ''; } catch (e) {}
       if (!saved) return; // ロック画面のまま待つ
@@ -190,19 +166,106 @@
         // 保存されていたパスワードが無効ならロック画面を出す
         try { sessionStorage.removeItem('ldcSettingsPw'); } catch (e) {}
       });
+    })();
+
+    /* ===== 画面の組み立て ===== */
+
+    function applySettings(s) {
+      canEdit = !!s.canEdit;
+      categories = s.categories || [];
+
+      if (!canEdit) {
+        document.getElementById('readonlyNote').hidden = false;
+        document.getElementById('save').disabled = true;
+      }
+
+      var tabs = document.getElementById('tabs');
+      var panels = document.getElementById('panels');
+      tabs.innerHTML = '';
+      panels.innerHTML = '';
+
+      categories.forEach(function (c, index) {
+        // タブ
+        var tab = document.createElement('button');
+        tab.className = 'tab' + (index === 0 ? ' active' : '');
+        tab.textContent = c.name;
+        tab.addEventListener('click', function () { showTab(index); });
+        tabs.appendChild(tab);
+
+        // パネル
+        var panel = document.createElement('div');
+        panel.className = 'panel';
+        panel.hidden = (index !== 0);
+        panel.innerHTML =
+          '<div class="note">参照シート：<strong>' + escHtml(c.sheet) + '</strong>' +
+          '（登録量：約' + (c.rulesLength || 0).toLocaleString() + '文字）</div>' +
+
+          '<div class="card">' +
+            '<h2>AIへの追加指示</h2>' +
+            '<p class="desc">回答の仕方についての指示を追加できます。' +
+            escHtml(c.name) + 'の質問のたびにAIへ一緒に送られます。</p>' +
+            '<textarea data-kind="instruction" placeholder="例：回答は3行以内で簡潔にまとめてください。"></textarea>' +
+            '<p class="example">例：「回答の最後に必ず担当部署の連絡先を添えてください。」<br>' +
+            '例：「専門用語は使わず、新入社員にもわかる言葉で説明してください。」</p>' +
+          '</div>' +
+
+          '<div class="card">' +
+            '<h2>追加ルール（規程への追記）</h2>' +
+            '<p class="desc">規程には書かれていない社内ルールや運用を追記できます。' +
+            'AIは規程本文とあわせて、ここの内容も根拠として回答します。</p>' +
+            '<textarea data-kind="rules" placeholder="例：申請は3営業日前までに社内システムから行うこと。"></textarea>' +
+            '<p class="example">例：「在宅勤務は週2日まで。前日までに上長へ申請すること。」<br>' +
+            '例：「申請書は社内ポータルの様式集にあります。」</p>' +
+          '</div>';
+
+        // テキストエリアに現在値を入れる（textContent で安全に設定）
+        var ta = panel.querySelectorAll('textarea');
+        ta[0].value = c.extraInstruction || '';
+        ta[1].value = c.extraRules || '';
+        if (!canEdit) {
+          ta[0].disabled = true;
+          ta[1].disabled = true;
+        }
+
+        panels.appendChild(panel);
+      });
+
+      document.getElementById('status').textContent = '';
     }
 
-    // 設定を保存する
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function showTab(index) {
+      var tabs = document.querySelectorAll('.tab');
+      var panels = document.querySelectorAll('.panel');
+      for (var i = 0; i < tabs.length; i++) {
+        tabs[i].classList.toggle('active', i === index);
+        panels[i].hidden = (i !== index);
+      }
+    }
+
+    /* ===== 保存 ===== */
+
     function save() {
       if (!canEdit) return;
       document.getElementById('save').disabled = true;
       document.getElementById('status').textContent = '保存中...';
 
+      // 全カテゴリ分をまとめて送る
+      var panels = document.querySelectorAll('.panel');
+      var items = categories.map(function (c, i) {
+        var ta = panels[i].querySelectorAll('textarea');
+        return { id: c.id, extraInstruction: ta[0].value, extraRules: ta[1].value };
+      });
+
       google.script.run
         .withSuccessHandler(function (msg) {
           document.getElementById('status').textContent = msg;
           document.getElementById('save').disabled = false;
-          // 数秒後にメッセージを消す
           setTimeout(function () { document.getElementById('status').textContent = ''; }, 4000);
         })
         .withFailureHandler(function () {
@@ -210,13 +273,8 @@
           document.getElementById('save').disabled = false;
           alert('保存できませんでした。もう一度お試しください。');
         })
-        .saveBotSettings({
-          extraInstruction: document.getElementById('extraInstruction').value,
-          extraRules: document.getElementById('extraRules').value
-        }, password);
+        .saveBotSettings(items, password);
     }
-
-    load();
   </script>
 </body>
 </html>

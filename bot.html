@@ -4,7 +4,7 @@
   <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>就労規則チャットボット</title>
+  <title>AIチャットボット</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background: #f1f3f4; }
@@ -14,8 +14,11 @@
     .app { display: flex; flex-direction: column; height: 100%; transition: filter .35s ease; }
     .app.thinking { filter: blur(5px); pointer-events: none; }
 
-    header { flex: 0 0 auto; background: #0b8043; color: #fff; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.2); display: flex; align-items: center; gap: 8px; }
-    header .title { font-size: 16px; font-weight: 600; flex: 1; }
+    header { flex: 0 0 auto; background: #0b8043; color: #fff; padding: 10px 12px; box-shadow: 0 1px 3px rgba(0,0,0,.2); display: flex; align-items: center; gap: 8px; }
+    header .back { flex: 0 0 auto; background: none; border: none; color: #fff; font-size: 24px; line-height: 1; cursor: pointer; padding: 0 4px; }
+    header .titles { flex: 1; min-width: 0; }
+    header .title { font-size: 16px; font-weight: 600; display: block; }
+    header .cat { font-size: 12px; opacity: .9; display: block; margin-top: 1px; }
     header .hist-btn { flex: 0 0 auto; background: rgba(255,255,255,.2); color: #fff; border: none; border-radius: 16px; padding: 7px 13px; font-size: 13px; cursor: pointer; }
     header .hist-btn:active { background: rgba(255,255,255,.35); }
 
@@ -123,27 +126,6 @@
     .hist-empty { padding: 28px 16px; text-align: center; color: #9aa0a6; font-size: 14px; }
     .hist-note { padding: 10px 16px; background: #f8f9fa; color: #5f6368; font-size: 12px; border-bottom: 1px solid #e8eaed; }
 
-    /* ===== パスワード入力モーダル ===== */
-    .modal {
-      position: fixed; inset: 0; z-index: 30;
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.45); padding: 16px;
-    }
-    /* hidden属性を確実に効かせる */
-    .modal[hidden] { display: none; }
-
-    .modal-box { background: #fff; border-radius: 12px; padding: 20px; width: 100%; max-width: 340px; }
-    .modal-box h3 { margin: 0 0 6px; font-size: 16px; color: #202124; }
-    .modal-box p { margin: 0 0 14px; font-size: 13px; color: #5f6368; line-height: 1.6; }
-    /* font-size:16px は iOS で入力時に画面が拡大されるのを防ぐため */
-    .modal-box input { width: 100%; padding: 11px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
-    .modal-err { color: #b3261e; font-size: 13px; margin-top: 8px; min-height: 1.2em; }
-    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
-    .modal-actions button { border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
-    .btn-cancel { background: #e8eaed; color: #3c4043; }
-    .btn-ok { background: #0b8043; color: #fff; }
-    .btn-ok:disabled { opacity: .5; cursor: default; }
-
     /* 動きを減らす設定の端末では控えめにする */
     @media (prefers-reduced-motion: reduce) {
       .glow, .bubble, .robot, .antenna-dot, .thinking-text .dot { animation: none; }
@@ -155,9 +137,12 @@
   <!-- アプリ本体（回答待ちの間はぼかす） -->
   <div class="app" id="app">
     <header>
-      <div class="title">就労規則チャットボット</div>
+      <button class="back" id="backBtn" onclick="goMenu()" aria-label="メニューに戻る">‹</button>
+      <span class="titles">
+        <span class="title">AIチャットボット</span>
+        <span class="cat" id="catLabel"></span>
+      </span>
       <button class="hist-btn" id="histBtn" onclick="openHistory()">質問履歴</button>
-      <button class="hist-btn" id="settingsBtn" onclick="openPwModal()" aria-label="設定">⚙</button>
     </header>
 
     <div id="log"></div>
@@ -205,28 +190,21 @@
   <!-- 質問履歴パネル：タップすると同じ質問をもう一度送れる -->
   <div class="history" id="history" hidden>
     <div class="history-head">
-      <span>質問履歴</span>
+      <span id="histTitle">質問履歴</span>
       <button id="histClose" onclick="closeHistory()" aria-label="閉じる">✕</button>
     </div>
     <div class="hist-note">タップすると同じ質問をもう一度送信します</div>
     <div class="history-list" id="histList"></div>
   </div>
 
-  <!-- 設定画面を開くためのパスワード入力モーダル -->
-  <div class="modal" id="pwModal" hidden>
-    <div class="modal-box">
-      <h3>設定を開く</h3>
-      <p>管理者用のパスワードを入力してください。</p>
-      <input type="password" id="pwInput" placeholder="パスワード" autocomplete="current-password">
-      <div class="modal-err" id="pwErr"></div>
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="closePwModal()">キャンセル</button>
-        <button class="btn-ok" id="pwOk" onclick="submitPw()">開く</button>
-      </div>
-    </div>
-  </div>
-
   <script>
+    // サーバー側から埋め込まれたカテゴリ情報
+    var CATEGORY_ID = '<?= categoryId ?>';
+    var CATEGORY_NAME = '<?= categoryName ?>';
+
+    document.getElementById('catLabel').textContent = CATEGORY_NAME;
+    document.getElementById('histTitle').textContent = CATEGORY_NAME + 'の質問履歴';
+
     var logEl = document.getElementById('log');
 
     function esc(s) {
@@ -279,60 +257,18 @@
           setThinking(false);
           addMsg('エラーが発生しました。もう一度送信してください。', 'a');
         })
-        .askWorkRules(question);
+        .askBot(CATEGORY_ID, question);
     }
 
-    /* ===== 設定を開く（パスワード） ===== */
+    /* ===== メニューへ戻る ===== */
 
-    // 画面遷移用にWebアプリのURLを取得しておく
     var webAppUrl = '';
     google.script.run.withSuccessHandler(function (url) { webAppUrl = url; }).getWebAppUrl();
 
-    function openPwModal() {
-      document.getElementById('pwInput').value = '';
-      document.getElementById('pwErr').textContent = '';
-      document.getElementById('pwModal').hidden = false;
-      setTimeout(function () { document.getElementById('pwInput').focus(); }, 50);
+    function goMenu() {
+      if (!webAppUrl) return;
+      window.top.location.href = webAppUrl;
     }
-
-    function closePwModal() {
-      document.getElementById('pwModal').hidden = true;
-    }
-
-    function submitPw() {
-      var pw = document.getElementById('pwInput').value;
-      var ok = document.getElementById('pwOk');
-      var err = document.getElementById('pwErr');
-      if (!pw) { err.textContent = 'パスワードを入力してください。'; return; }
-
-      ok.disabled = true;
-      err.textContent = '確認中...';
-
-      // 照合はサーバー側で行う
-      google.script.run
-        .withSuccessHandler(function (valid) {
-          ok.disabled = false;
-          if (!valid) {
-            err.textContent = 'パスワードが違います。';
-            return;
-          }
-          err.textContent = '';
-          // 設定画面で再入力させないように一時的に保持する
-          try { sessionStorage.setItem('ldcSettingsPw', pw); } catch (e) {}
-          closePwModal();
-          window.top.location.href = webAppUrl + '?app=settings';
-        })
-        .withFailureHandler(function () {
-          ok.disabled = false;
-          err.textContent = '確認できませんでした。もう一度お試しください。';
-        })
-        .checkSettingsPassword(pw);
-    }
-
-    // パスワード欄で Enter を押したら送信
-    document.getElementById('pwInput').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); submitPw(); }
-    });
 
     /* ===== 質問履歴 ===== */
 
@@ -353,7 +289,7 @@
         .withFailureHandler(function () {
           list.innerHTML = '<div class="hist-empty">履歴を読み込めませんでした。<br>もう一度お試しください。</div>';
         })
-        .getQuestionHistory();
+        .getQuestionHistory(CATEGORY_ID);
     }
 
     function closeHistory() {
@@ -392,12 +328,14 @@
       });
     }
 
-    // 入力欄の自動リサイズ・Enter送信（Shift+Enterで改行）
+    /* ===== 入力欄 ===== */
+
     var input = document.getElementById('input');
     input.addEventListener('input', function () {
       this.style.height = 'auto';
       this.style.height = Math.min(this.scrollHeight, 100) + 'px';
     });
+
     // スマホ・タブレット（タッチ端末）かどうか
     var isTouchDevice = window.matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window);
 

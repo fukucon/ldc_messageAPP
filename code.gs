@@ -1,37 +1,63 @@
 /**
  * code.gs
- * Webアプリのメイン動作。Googleチャット風のメッセージ送受信を担当する。
- * 定数（SPREADSHEET_ID やシート名・ヘッダー）は setup.gs を参照する。
+ * AIチャットボットのメイン動作。
+ * カテゴリ（労務系・経理系・購買系）ごとに参照する規程シートを切り替える。
+ * カテゴリ定義やシート名は setup.gs を参照。
+ *
+ * 退避したコード：
+ * - PDF/画像OCR機能 … OCR.md
+ * - 旧Googleチャット風アプリ … CHAT.md
  */
+
+/* ============================================================
+ * 画面の振り分け
+ * ============================================================ */
 
 /**
  * Webアプリのエントリーポイント。
- * デフォルトは就労規則チャットボット（bot.html）。
- * ?app=chat でチャット画面、?app=ocr で OCR画面（どちらも非表示の隠し機能として残す）。
+ * - パラメータなし        … メニュー画面（index.html）
+ * - ?app=bot&cat=<id>    … カテゴリ別チャット画面（bot.html）
+ * - ?app=settings        … 設定画面（settings.html）
  */
 function doGet(e) {
-  var app = (e && e.parameter && e.parameter.app) || '';
+  var params = (e && e.parameter) || {};
+  var app = params.app || '';
 
-  if (app === 'ocr') {
-    return HtmlService.createHtmlOutputFromFile('ocr')
-      .setTitle('OCR (PDF / 画像)')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-  }
   if (app === 'settings') {
     return HtmlService.createHtmlOutputFromFile('settings')
-      .setTitle('チャットボット設定')
+      .setTitle('AIチャットボット設定')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
-  if (app === 'chat') {
-    return HtmlService.createHtmlOutputFromFile('index')
-      .setTitle('LDC Chat')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+
+  if (app === 'bot') {
+    var category = findCategory_(params.cat);
+    if (!category) {
+      // 不正なカテゴリならメニューに戻す
+      return renderMenu_();
+    }
+    // カテゴリ情報を埋め込んで返す（iframe内からURLを読めないため）
+    var page = HtmlService.createTemplateFromFile('bot');
+    page.categoryId = category.id;
+    page.categoryName = category.name;
+    return page.evaluate()
+      .setTitle('AIチャットボット｜' + category.name)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
 
-  // デフォルト：就労規則チャットボット
-  return HtmlService.createHtmlOutputFromFile('bot')
-    .setTitle('就労規則チャットボット')
+  // デフォルト：メニュー画面
+  return renderMenu_();
+}
+
+/**
+ * メニュー画面を組み立てる。
+ */
+function renderMenu_() {
+  var page = HtmlService.createTemplateFromFile('index');
+  page.categoriesJson = JSON.stringify(CATEGORIES.map(function (c) {
+    return { id: c.id, name: c.name, desc: c.desc, icon: c.icon };
+  }));
+  return page.evaluate()
+    .setTitle('AIチャットボット')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
@@ -52,85 +78,15 @@ function getCurrentUser() {
 }
 
 /**
- * ルーム一覧を取得する。
- * @return {Array<Object>} [{roomId, name}]
+ * カテゴリIDから定義を探す。見つからなければ null。
  */
-function getRooms() {
-  var sheet = getSheet_(ROOMS_SHEET);
-  var values = sheet.getDataRange().getValues();
-  var rooms = [];
-  for (var i = 1; i < values.length; i++) {
-    if (!values[i][0]) continue;
-    rooms.push({ roomId: values[i][0], name: values[i][1] });
+function findCategory_(id) {
+  for (var i = 0; i < CATEGORIES.length; i++) {
+    if (CATEGORIES[i].id === id) {
+      return CATEGORIES[i];
+    }
   }
-  return rooms;
-}
-
-/**
- * ルームを新規作成する。
- * @return {Object} 作成したルーム {roomId, name}
- */
-function createRoom(name) {
-  name = (name || '').toString().trim();
-  if (!name) {
-    throw new Error('ルーム名を入力してください');
-  }
-  var sheet = getSheet_(ROOMS_SHEET);
-  var roomId = Utilities.getUuid();
-  sheet.appendRow([roomId, name, new Date()]);
-  return { roomId: roomId, name: name };
-}
-
-/**
- * 指定ルームのメッセージを取得する。
- * @param {string} roomId 対象ルームID
- * @return {Array<Object>} [{user, text, createdAt}]
- */
-function getMessages(roomId) {
-  var sheet = getSheet_(MESSAGES_SHEET);
-  var values = sheet.getDataRange().getValues();
-  var messages = [];
-  for (var i = 1; i < values.length; i++) {
-    if (values[i][1] !== roomId) continue;
-    messages.push({
-      user: values[i][2],
-      text: values[i][3],
-      createdAt: values[i][4] ? new Date(values[i][4]).getTime() : 0
-    });
-  }
-  return messages;
-}
-
-/**
- * メッセージを投稿する。
- * @param {string} roomId 対象ルームID
- * @param {string} text   本文
- * @return {Object} 投稿したメッセージ
- */
-function postMessage(roomId, text) {
-  text = (text || '').toString().trim();
-  if (!roomId) {
-    throw new Error('ルームが選択されていません');
-  }
-  if (!text) {
-    throw new Error('メッセージを入力してください');
-  }
-  var user = getCurrentUser();
-  var now = new Date();
-  var sheet = getSheet_(MESSAGES_SHEET);
-  sheet.appendRow([Utilities.getUuid(), roomId, user, text, now]);
-  return { user: user, text: text, createdAt: now.getTime() };
-}
-
-/**
- * シートを取得する内部ヘルパー。未生成なら setup() を促すエラーを投げる。
- */
-function getSheet_(name) {
-  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(name);
-  if (!sheet) {
-    throw new Error('シート「' + name + '」がありません。先に setup() を実行してください。');
-  }
-  return sheet;
+  return null;
 }
 
 /* ============================================================
@@ -144,14 +100,11 @@ var USER_ERROR_RETRY = 'エラーが発生しました。もう一度送信し�
 var USER_ERROR_CONTACT = 'ただいまご利用いただけません。管理者にお問い合わせください。';
 
 /* ============================================================
- * PDF OCR 機能（Gemini API）
+ * APIキー（Gemini）
  * ============================================================ */
 
-// OCR時にPDF・画像と一緒に送る固定プロンプト文（ここを編集すれば全関数に反映される）
-var OCR_PROMPT = 'この画像またはPDFの文字をすべてOCRして、テキストとして出力してください。';
-
 /**
- * フェーズ0: APIキーをスクリプトプロパティに保存する。
+ * APIキーをスクリプトプロパティに保存する。
  * 実行前に下の API_KEY に Google AI Studio のキーを貼り付けてください。
  */
 function setupApiKey() {
@@ -169,7 +122,7 @@ function setupApiKey() {
 }
 
 /**
- * フェーズ0: APIキーが設定済みか確認する。
+ * APIキーが設定済みか確認する。
  * 設定済みなら先頭10文字だけ、未設定なら「未設定です」とログ表示する。
  */
 function checkApiKey() {
@@ -181,227 +134,27 @@ function checkApiKey() {
   }
 }
 
-/**
- * フェーズ1: PDFを Gemini API でOCRし、テキストを返す。
- * エラー時は例外をthrowせず、エラーメッセージ文字列を返す。
- * @param {string} fileId DriveのPDFファイルID
- * @return {string} OCR結果テキスト（または失敗時のエラーメッセージ）
- */
-function ocrPdfWithGemini(fileId) {
-  try {
-    // APIキーをスクリプトプロパティから取得
-    var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    if (!apiKey) {
-      Logger.log('GEMINI_API_KEY が未設定です。setupApiKey() を実行してください。');
-      return USER_ERROR_CONTACT;
-    }
-
-    // ファイルを取得して Base64 エンコード（PDF・画像どちらも対応）
-    var file = DriveApp.getFileById(fileId);
-    var blob = file.getBlob();
-    var base64Data = Utilities.base64Encode(blob.getBytes());
-    var mimeType = blob.getContentType() || 'application/pdf';
-
-    // Gemini API（gemini-2.5-flash）へのリクエストを組み立てる
-    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
-    var payload = {
-      contents: [
-        {
-          parts: [
-            { text: OCR_PROMPT },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: base64Data
-              }
-            }
-          ]
-        }
-      ],
-      // OCR用途では思考(thinking)をオフにして高速化・空応答を防ぐ
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 0 }
-      }
-    };
-
-    var options = {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    };
-
-    // API呼び出し
-    var response = UrlFetchApp.fetch(url, options);
-    var code = response.getResponseCode();
-    var body = response.getContentText();
-
-    if (code !== 200) {
-      Logger.log('Gemini APIリクエスト失敗 (HTTP ' + code + ') ' + body);
-      return USER_ERROR_RETRY;
-    }
-
-    // レスポンスからテキストを取り出す
-    var json = JSON.parse(body);
-    if (!json.candidates || !json.candidates.length) {
-      Logger.log('OCR結果が取得できませんでした: ' + body);
-      return USER_ERROR_RETRY;
-    }
-    var text = json.candidates[0].content.parts[0].text;
-    return text;
-
-  } catch (e) {
-    // 技術的な詳細はログにだけ残し、画面には平易な文言を返す
-    Logger.log('ocrPdfWithGemini エラー: ' + e.message);
-    return USER_ERROR_RETRY;
-  }
-}
-
-/**
- * アップロードされたPDF・画像（Base64）をその場で Gemini OCR する。
- * Driveに保存せず、ブラウザから渡されたBase64データを直接送信する。
- * エラー時は例外をthrowせず、エラーメッセージ文字列を返す。
- * @param {string} base64Data Base64エンコード済みデータ
- * @param {string} mimeType   データのMIMEタイプ（例: application/pdf, image/png）
- * @return {string} OCR結果テキスト（または失敗時のエラーメッセージ）
- */
-function ocrUploadedPdf(base64Data, mimeType) {
-  try {
-    // APIキーをスクリプトプロパティから取得
-    var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    if (!apiKey) {
-      Logger.log('GEMINI_API_KEY が未設定です。setupApiKey() を実行してください。');
-      return USER_ERROR_CONTACT;
-    }
-    if (!base64Data) {
-      return 'ファイルが選択されていません。';
-    }
-    // MIMEタイプ未指定の場合はPDFとして扱う
-    mimeType = mimeType || 'application/pdf';
-
-    // Gemini API（gemini-2.5-flash）へのリクエストを組み立てる
-    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey;
-    var payload = {
-      contents: [
-        {
-          parts: [
-            { text: OCR_PROMPT },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: base64Data
-              }
-            }
-          ]
-        }
-      ],
-      // OCR用途では思考(thinking)をオフにして高速化・空応答を防ぐ
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 0 }
-      }
-    };
-
-    var options = {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    };
-
-    // API呼び出し
-    var response = UrlFetchApp.fetch(url, options);
-    var code = response.getResponseCode();
-    var body = response.getContentText();
-
-    if (code !== 200) {
-      Logger.log('Gemini APIリクエスト失敗 (HTTP ' + code + ') ' + body);
-      return USER_ERROR_RETRY;
-    }
-
-    var json = JSON.parse(body);
-    if (!json.candidates || !json.candidates.length) {
-      Logger.log('OCR結果が取得できませんでした: ' + body);
-      return USER_ERROR_RETRY;
-    }
-    return json.candidates[0].content.parts[0].text;
-
-  } catch (e) {
-    Logger.log('ocrUploadedPdf エラー: ' + e.message);
-    return USER_ERROR_RETRY;
-  }
-}
-
-/**
- * アップロードしたPDFのOCR結果をスプレッドシートに保存する。
- * 保存先シート「OCR結果」が無ければ自動作成する。
- * 1行に [実行日時, fileId(空), ファイル名, OCRテキスト] を追記する。
- * @param {string} fileName アップロードしたファイル名
- * @param {string} ocrText  OCR結果テキスト
- * @return {string} 完了メッセージ
- */
-function saveUploadedOcrResult(fileName, ocrText) {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = ss.getSheetByName('OCR結果');
-  if (!sheet) {
-    sheet = ss.insertSheet('OCR結果');
-    sheet.appendRow(['実行日時', 'fileId', 'ファイル名', 'OCRテキスト']);
-  }
-  sheet.appendRow([new Date(), '', fileName || '', ocrText]);
-  return '保存しました';
-}
-
-/**
- * フェーズ3: OCR結果をスプレッドシートに保存する。
- * 保存先シート「OCR結果」が無ければ自動作成する。
- * 1行に [実行日時, fileId, ファイル名, OCRテキスト] を追記する。
- * @param {string} fileId  対象PDFのファイルID
- * @param {string} ocrText OCR結果テキスト
- * @return {string} 完了メッセージ
- */
-function saveOcrResult(fileId, ocrText) {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = ss.getSheetByName('OCR結果');
-
-  // シートが無ければ作成し、ヘッダー行を設定する
-  if (!sheet) {
-    sheet = ss.insertSheet('OCR結果');
-    sheet.appendRow(['実行日時', 'fileId', 'ファイル名', 'OCRテキスト']);
-  }
-
-  // ファイル名を取得（取得できない場合は空文字）
-  var fileName = '';
-  try {
-    fileName = DriveApp.getFileById(fileId).getName();
-  } catch (e) {
-    fileName = '';
-  }
-
-  sheet.appendRow([new Date(), fileId, fileName, ocrText]);
-  return '保存しました';
-}
-
 /* ============================================================
- * 就労規則チャットボット（Gemini API）
+ * 規程の読み込みと回答生成
  * ============================================================ */
 
-// ボットへの基本指示（就労規則の範囲だけで答えさせる）
+/**
+ * ボットへの基本指示。{CATEGORY} はカテゴリ名に置き換わる。
+ */
 var BOT_SYSTEM_INSTRUCTION =
-  'あなたは会社の就労規則に関する社内アシスタントです。' +
-  '以下に示す「就労規則」の内容だけに基づいて、社員の質問に日本語でわかりやすく回答してください。' +
-  '就労規則に書かれていない事項については推測せず、「就労規則には記載がありません。担当部署にご確認ください。」と答えてください。' +
+  'あなたは会社の{CATEGORY}の規程に関する社内アシスタントです。' +
+  '以下に示す規程の内容だけに基づいて、社員の質問に日本語でわかりやすく回答してください。' +
+  '規程に書かれていない事項については推測せず、「規程には記載がありません。担当部署にご確認ください。」と答えてください。' +
   '可能であれば、根拠となる条文や項目名も添えてください。';
 
 /**
- * 「就労規則」シートから本文を読み込んで1つの文字列にする。
+ * 指定カテゴリの規程シートから本文を読み込んで1つの文字列にする。
  * 1行目は説明行のため除外し、2行目以降を連結する。
- * @return {string} 就労規則の全文（未登録なら空文字）
+ * @param {Object} category カテゴリ定義
+ * @return {string} 規程の全文（未登録なら空文字）
  */
-function getWorkRules_() {
-  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(RULES_SHEET);
+function getRulesText_(category) {
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(category.sheet);
   if (!sheet) {
     return '';
   }
@@ -420,17 +173,23 @@ function getWorkRules_() {
 }
 
 /**
- * 就労規則についての質問に回答する。
- * 就労規則の全文＋質問を Gemini に渡し、回答テキストを返す。
- * エラー時は例外をthrowせず、エラーメッセージ文字列を返す。
- * @param {string} question 社員からの質問
+ * 規程についての質問に回答する。
+ * 規程の全文＋設定＋質問を Gemini に渡し、回答テキストを返す。
+ * エラー時は例外をthrowせず、平易なエラーメッセージ文字列を返す。
+ * @param {string} categoryId カテゴリID
+ * @param {string} question   社員からの質問
  * @return {string} 回答テキスト（または失敗時のエラーメッセージ）
  */
-function askWorkRules(question) {
+function askBot(categoryId, question) {
+  var category = findCategory_(categoryId);
   try {
     question = (question || '').toString().trim();
     if (!question) {
       return '質問を入力してください。';
+    }
+    if (!category) {
+      Logger.log('不正なカテゴリID: ' + categoryId);
+      return USER_ERROR_CONTACT;
     }
 
     var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
@@ -439,223 +198,44 @@ function askWorkRules(question) {
       return USER_ERROR_CONTACT;
     }
 
-    var rules = getWorkRules_();
+    var rules = getRulesText_(category);
     // 設定画面で追加された指示・ルールを読み込む
-    var settings = readBotSettings_();
+    var settings = readCategorySettings_(category.name);
 
     if (!rules && !settings.extraRules) {
-      Logger.log('「就労規則」シートと追加ルールがどちらも空です。');
-      return '就労規則がまだ登録されていません。管理者にお問い合わせください。';
+      Logger.log('「' + category.sheet + '」シートと追加ルールがどちらも空です。');
+      return category.name + 'の規程がまだ登録されていません。管理者にお問い合わせください。';
     }
 
-    // プロンプトを組み立てる（指示＋追加指示＋就労規則＋追加ルール＋質問）
-    var prompt = BOT_SYSTEM_INSTRUCTION;
+    // プロンプトを組み立てる（基本指示＋追加指示＋規程本文＋追加ルール＋質問）
+    var prompt = BOT_SYSTEM_INSTRUCTION.replace('{CATEGORY}', category.name);
 
     if (settings.extraInstruction) {
       prompt += '\n\n【追加の指示】\n' + settings.extraInstruction;
     }
 
-    prompt += '\n\n===== 就労規則ここから =====\n' + rules;
+    prompt += '\n\n===== ' + category.name + 'の規程ここから =====\n' + rules;
 
     if (settings.extraRules) {
-      prompt += '\n\n----- 追加ルール（就労規則を補足する社内ルール） -----\n' + settings.extraRules;
+      prompt += '\n\n----- 追加ルール（規程を補足する社内ルール） -----\n' + settings.extraRules;
     }
 
-    prompt += '\n===== 就労規則ここまで =====\n\n' +
+    prompt += '\n===== ' + category.name + 'の規程ここまで =====\n\n' +
       '【社員からの質問】\n' + question;
 
     var answer = callGeminiText_(prompt, apiKey);
 
     // 質問と回答をログシートに記録する
-    logBotQa_(question, answer);
+    logBotQa_(category.name, question, answer);
 
     return answer;
 
   } catch (e) {
     // 技術的な詳細はログにだけ残し、画面には平易な文言を返す
-    Logger.log('askWorkRules エラー: ' + e.message);
+    Logger.log('askBot エラー: ' + e.message);
     // 失敗した質問も履歴に残す
-    logBotQa_(question, USER_ERROR_RETRY);
+    logBotQa_(category ? category.name : '', question, USER_ERROR_RETRY);
     return USER_ERROR_RETRY;
-  }
-}
-
-/* ===== 設定（AIへの追加指示・就業規則への追記ルール） ===== */
-
-// 設定画面を開くための簡易パスワード
-var SETTINGS_PASSWORD = 'ldcpass';
-
-/**
- * 設定画面のパスワードが正しいか判定する。
- * 照合はサーバー側で行うため、パスワードは画面のソースには出ない。
- * @param {string} password 入力されたパスワード
- * @return {boolean} 正しければ true
- */
-function checkSettingsPassword(password) {
-  return String(password || '') === SETTINGS_PASSWORD;
-}
-
-// 設定画面で保存できる管理者のメールアドレス。
-// 空配列のままなら、設定画面のURLを知っている人は誰でも保存できる。
-// 例: var ADMIN_EMAILS = ['soumu@example.com', 'hr@example.com'];
-var ADMIN_EMAILS = [];
-
-/**
- * 現在のユーザーが設定を保存できるかどうか。
- */
-function isAdmin_() {
-  if (!ADMIN_EMAILS.length) {
-    return true; // 未設定なら制限しない
-  }
-  var me = (getCurrentUser() || '').toLowerCase();
-  for (var i = 0; i < ADMIN_EMAILS.length; i++) {
-    if (String(ADMIN_EMAILS[i]).toLowerCase() === me) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * 設定シートを取得する（無ければ作成する）。
- */
-function getSettingsSheet_() {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = ss.getSheetByName(SETTINGS_SHEET);
-  if (!sheet) {
-    sheet = ss.insertSheet(SETTINGS_SHEET);
-    sheet.appendRow(['項目', '内容']);
-    sheet.appendRow([SETTING_INSTRUCTION, '']);
-    sheet.appendRow([SETTING_EXTRA_RULES, '']);
-  }
-  return sheet;
-}
-
-/**
- * 設定シートから項目名で値を読む。
- */
-function readSetting_(sheet, key) {
-  var values = sheet.getDataRange().getValues();
-  for (var i = 1; i < values.length; i++) {
-    if (values[i][0] === key) {
-      return (values[i][1] || '').toString();
-    }
-  }
-  return '';
-}
-
-/**
- * 設定シートに項目名で値を書く（無ければ行を追加する）。
- */
-function writeSetting_(sheet, key, value) {
-  var values = sheet.getDataRange().getValues();
-  for (var i = 1; i < values.length; i++) {
-    if (values[i][0] === key) {
-      sheet.getRange(i + 1, 2).setValue(value);
-      return;
-    }
-  }
-  sheet.appendRow([key, value]);
-}
-
-/**
- * 内部用：現在の設定を読む（パスワード不要。回答生成から使う）。
- * @return {Object} {extraInstruction, extraRules}
- */
-function readBotSettings_() {
-  try {
-    var sheet = getSettingsSheet_();
-    return {
-      extraInstruction: readSetting_(sheet, SETTING_INSTRUCTION),
-      extraRules: readSetting_(sheet, SETTING_EXTRA_RULES)
-    };
-  } catch (e) {
-    Logger.log('readBotSettings_ エラー: ' + e.message);
-    return { extraInstruction: '', extraRules: '' };
-  }
-}
-
-/**
- * 設定画面用：現在の設定を取得する（パスワードが必要）。
- * @param {string} password 設定画面のパスワード
- * @return {Object|null} 正しければ設定、違えば null
- */
-function getBotSettings(password) {
-  if (!checkSettingsPassword(password)) {
-    return null;
-  }
-  try {
-    var s = readBotSettings_();
-    s.rulesLength = getWorkRules_().length; // 就労規則シート本体の文字数（目安表示用）
-    s.canEdit = isAdmin_();
-    return s;
-  } catch (e) {
-    Logger.log('getBotSettings エラー: ' + e.message);
-    return { extraInstruction: '', extraRules: '', rulesLength: 0, canEdit: false };
-  }
-}
-
-/**
- * 設定画面用：設定を保存する（パスワードが必要）。
- * @param {Object} settings {extraInstruction, extraRules}
- * @param {string} password 設定画面のパスワード
- * @return {string} 画面に出すメッセージ
- */
-function saveBotSettings(settings, password) {
-  try {
-    if (!checkSettingsPassword(password)) {
-      return 'パスワードが正しくありません。開き直してもう一度お試しください。';
-    }
-    if (!isAdmin_()) {
-      return '保存する権限がありません。管理者にお問い合わせください。';
-    }
-    settings = settings || {};
-    var sheet = getSettingsSheet_();
-    writeSetting_(sheet, SETTING_INSTRUCTION, (settings.extraInstruction || '').toString());
-    writeSetting_(sheet, SETTING_EXTRA_RULES, (settings.extraRules || '').toString());
-    return '保存しました';
-  } catch (e) {
-    Logger.log('saveBotSettings エラー: ' + e.message);
-    return USER_ERROR_RETRY;
-  }
-}
-
-/**
- * ログイン中の社員の質問履歴を新しい順に取得する。
- * 同じ内容の質問は重複を除き、最大50件返す。
- * @return {Array<Object>} [{question, at}] at はエポックミリ秒
- */
-function getQuestionHistory() {
-  try {
-    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BOT_LOG_SHEET);
-    if (!sheet) {
-      return [];
-    }
-    var values = sheet.getDataRange().getValues();
-    var user = getCurrentUser();
-    var seen = {};
-    var list = [];
-
-    // 新しい順に走査（1行目はヘッダーなので除外）
-    for (var i = values.length - 1; i >= 1; i--) {
-      var row = values[i];
-      if (row[1] !== user) continue; // 自分の質問のみ
-
-      var q = (row[2] || '').toString().trim();
-      if (!q || seen[q]) continue;   // 空・重複は除外
-      seen[q] = true;
-
-      list.push({
-        question: q,
-        at: row[0] ? new Date(row[0]).getTime() : 0
-      });
-      if (list.length >= 50) break;
-    }
-    return list;
-
-  } catch (e) {
-    Logger.log('getQuestionHistory エラー: ' + e.message);
-    return [];
   }
 }
 
@@ -699,19 +279,222 @@ function callGeminiText_(promptText, apiKey) {
   return json.candidates[0].content.parts[0].text;
 }
 
+/* ============================================================
+ * 質問ログ・履歴
+ * ============================================================ */
+
 /**
  * 質問と回答を「質問ログ」シートに記録する。失敗しても本処理は止めない。
  */
-function logBotQa_(question, answer) {
+function logBotQa_(categoryName, question, answer) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(BOT_LOG_SHEET);
     if (!sheet) {
       sheet = ss.insertSheet(BOT_LOG_SHEET);
-      sheet.appendRow(['日時', '社員', '質問', '回答']);
+      sheet.appendRow(BOT_LOG_HEADER);
     }
-    sheet.appendRow([new Date(), getCurrentUser(), question, answer]);
+    sheet.appendRow([new Date(), categoryName, getCurrentUser(), question, answer]);
   } catch (e) {
     // ログ失敗は無視
+  }
+}
+
+/**
+ * ログイン中の社員の質問履歴を新しい順に取得する。
+ * 指定カテゴリの質問のみ、重複を除いて最大50件返す。
+ * @param {string} categoryId カテゴリID
+ * @return {Array<Object>} [{question, at}] at はエポックミリ秒
+ */
+function getQuestionHistory(categoryId) {
+  try {
+    var category = findCategory_(categoryId);
+    if (!category) {
+      return [];
+    }
+    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BOT_LOG_SHEET);
+    if (!sheet) {
+      return [];
+    }
+    var values = sheet.getDataRange().getValues();
+    var user = getCurrentUser();
+    var seen = {};
+    var list = [];
+
+    // 新しい順に走査（1行目はヘッダーなので除外）
+    // 列: 0=日時 1=カテゴリ 2=社員 3=質問 4=回答
+    for (var i = values.length - 1; i >= 1; i--) {
+      var row = values[i];
+      if (row[1] !== category.name) continue; // このカテゴリのみ
+      if (row[2] !== user) continue;          // 自分の質問のみ
+
+      var q = (row[3] || '').toString().trim();
+      if (!q || seen[q]) continue;            // 空・重複は除外
+      seen[q] = true;
+
+      list.push({
+        question: q,
+        at: row[0] ? new Date(row[0]).getTime() : 0
+      });
+      if (list.length >= 50) break;
+    }
+    return list;
+
+  } catch (e) {
+    Logger.log('getQuestionHistory エラー: ' + e.message);
+    return [];
+  }
+}
+
+/* ============================================================
+ * 設定（カテゴリごとの追加指示・追加ルール）
+ * ============================================================ */
+
+// 設定画面を開くための簡易パスワード
+var SETTINGS_PASSWORD = 'ldcpass';
+
+/**
+ * 設定画面のパスワードが正しいか判定する。
+ * 照合はサーバー側で行うため、パスワードは画面のソースには出ない。
+ * @param {string} password 入力されたパスワード
+ * @return {boolean} 正しければ true
+ */
+function checkSettingsPassword(password) {
+  return String(password || '') === SETTINGS_PASSWORD;
+}
+
+// 設定画面で保存できる管理者のメールアドレス。
+// 空配列のままなら、パスワードを知っている人は誰でも保存できる。
+// 例: var ADMIN_EMAILS = ['soumu@example.com', 'hr@example.com'];
+var ADMIN_EMAILS = [];
+
+/**
+ * 現在のユーザーが設定を保存できるかどうか。
+ */
+function isAdmin_() {
+  if (!ADMIN_EMAILS.length) {
+    return true; // 未設定なら制限しない
+  }
+  var me = (getCurrentUser() || '').toLowerCase();
+  for (var i = 0; i < ADMIN_EMAILS.length; i++) {
+    if (String(ADMIN_EMAILS[i]).toLowerCase() === me) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 設定シートを取得する（無ければカテゴリ行付きで作成する）。
+ */
+function getSettingsSheet_() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(SETTINGS_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(SETTINGS_SHEET);
+    sheet.appendRow(SETTINGS_HEADER);
+    for (var i = 0; i < CATEGORIES.length; i++) {
+      sheet.appendRow([CATEGORIES[i].name, '', '']);
+    }
+  }
+  return sheet;
+}
+
+/**
+ * 内部用：指定カテゴリの設定を読む（パスワード不要。回答生成から使う）。
+ * @param {string} categoryName カテゴリ名
+ * @return {Object} {extraInstruction, extraRules}
+ */
+function readCategorySettings_(categoryName) {
+  try {
+    var sheet = getSettingsSheet_();
+    var values = sheet.getDataRange().getValues();
+    // 列: 0=カテゴリ 1=追加指示 2=追加ルール
+    for (var i = 1; i < values.length; i++) {
+      if (values[i][0] === categoryName) {
+        return {
+          extraInstruction: (values[i][1] || '').toString(),
+          extraRules: (values[i][2] || '').toString()
+        };
+      }
+    }
+    return { extraInstruction: '', extraRules: '' };
+  } catch (e) {
+    Logger.log('readCategorySettings_ エラー: ' + e.message);
+    return { extraInstruction: '', extraRules: '' };
+  }
+}
+
+/**
+ * 設定画面用：全カテゴリの設定を取得する（パスワードが必要）。
+ * @param {string} password 設定画面のパスワード
+ * @return {Object|null} 正しければ {canEdit, categories:[...]}、違えば null
+ */
+function getBotSettings(password) {
+  if (!checkSettingsPassword(password)) {
+    return null;
+  }
+  try {
+    var list = CATEGORIES.map(function (c) {
+      var s = readCategorySettings_(c.name);
+      return {
+        id: c.id,
+        name: c.name,
+        desc: c.desc,
+        sheet: c.sheet,
+        extraInstruction: s.extraInstruction,
+        extraRules: s.extraRules,
+        rulesLength: getRulesText_(c).length // 規程本文の文字数（目安表示用）
+      };
+    });
+    return { canEdit: isAdmin_(), categories: list };
+  } catch (e) {
+    Logger.log('getBotSettings エラー: ' + e.message);
+    return { canEdit: false, categories: [] };
+  }
+}
+
+/**
+ * 設定画面用：全カテゴリの設定を保存する（パスワードが必要）。
+ * @param {Array<Object>} items    [{id, extraInstruction, extraRules}]
+ * @param {string}        password 設定画面のパスワード
+ * @return {string} 画面に出すメッセージ
+ */
+function saveBotSettings(items, password) {
+  try {
+    if (!checkSettingsPassword(password)) {
+      return 'パスワードが正しくありません。開き直してもう一度お試しください。';
+    }
+    if (!isAdmin_()) {
+      return '保存する権限がありません。管理者にお問い合わせください。';
+    }
+
+    var sheet = getSettingsSheet_();
+    var values = sheet.getDataRange().getValues();
+    items = items || [];
+
+    for (var n = 0; n < items.length; n++) {
+      var category = findCategory_(items[n].id);
+      if (!category) continue;
+
+      var instruction = (items[n].extraInstruction || '').toString();
+      var extraRules = (items[n].extraRules || '').toString();
+
+      // 該当カテゴリの行を探して更新（無ければ追加）
+      var rowIndex = -1;
+      for (var i = 1; i < values.length; i++) {
+        if (values[i][0] === category.name) { rowIndex = i + 1; break; }
+      }
+      if (rowIndex > 0) {
+        sheet.getRange(rowIndex, 2, 1, 2).setValues([[instruction, extraRules]]);
+      } else {
+        sheet.appendRow([category.name, instruction, extraRules]);
+      }
+    }
+    return '保存しました';
+
+  } catch (e) {
+    Logger.log('saveBotSettings エラー: ' + e.message);
+    return USER_ERROR_RETRY;
   }
 }
