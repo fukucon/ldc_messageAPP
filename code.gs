@@ -441,7 +441,7 @@ function askWorkRules(question) {
 
     var rules = getWorkRules_();
     // 設定画面で追加された指示・ルールを読み込む
-    var settings = getBotSettings();
+    var settings = readBotSettings_();
 
     if (!rules && !settings.extraRules) {
       Logger.log('「就労規則」シートと追加ルールがどちらも空です。');
@@ -481,6 +481,19 @@ function askWorkRules(question) {
 }
 
 /* ===== 設定（AIへの追加指示・就業規則への追記ルール） ===== */
+
+// 設定画面を開くための簡易パスワード
+var SETTINGS_PASSWORD = 'ldcpass';
+
+/**
+ * 設定画面のパスワードが正しいか判定する。
+ * 照合はサーバー側で行うため、パスワードは画面のソースには出ない。
+ * @param {string} password 入力されたパスワード
+ * @return {boolean} 正しければ true
+ */
+function checkSettingsPassword(password) {
+  return String(password || '') === SETTINGS_PASSWORD;
+}
 
 // 設定画面で保存できる管理者のメールアドレス。
 // 空配列のままなら、設定画面のURLを知っている人は誰でも保存できる。
@@ -546,18 +559,36 @@ function writeSetting_(sheet, key, value) {
 }
 
 /**
- * 設定画面用：現在の設定を取得する。
- * @return {Object} {extraInstruction, extraRules, rulesLength, canEdit}
+ * 内部用：現在の設定を読む（パスワード不要。回答生成から使う）。
+ * @return {Object} {extraInstruction, extraRules}
  */
-function getBotSettings() {
+function readBotSettings_() {
   try {
     var sheet = getSettingsSheet_();
     return {
       extraInstruction: readSetting_(sheet, SETTING_INSTRUCTION),
-      extraRules: readSetting_(sheet, SETTING_EXTRA_RULES),
-      rulesLength: getWorkRules_().length, // 就労規則シート本体の文字数（目安表示用）
-      canEdit: isAdmin_()
+      extraRules: readSetting_(sheet, SETTING_EXTRA_RULES)
     };
+  } catch (e) {
+    Logger.log('readBotSettings_ エラー: ' + e.message);
+    return { extraInstruction: '', extraRules: '' };
+  }
+}
+
+/**
+ * 設定画面用：現在の設定を取得する（パスワードが必要）。
+ * @param {string} password 設定画面のパスワード
+ * @return {Object|null} 正しければ設定、違えば null
+ */
+function getBotSettings(password) {
+  if (!checkSettingsPassword(password)) {
+    return null;
+  }
+  try {
+    var s = readBotSettings_();
+    s.rulesLength = getWorkRules_().length; // 就労規則シート本体の文字数（目安表示用）
+    s.canEdit = isAdmin_();
+    return s;
   } catch (e) {
     Logger.log('getBotSettings エラー: ' + e.message);
     return { extraInstruction: '', extraRules: '', rulesLength: 0, canEdit: false };
@@ -565,12 +596,16 @@ function getBotSettings() {
 }
 
 /**
- * 設定画面用：設定を保存する。
+ * 設定画面用：設定を保存する（パスワードが必要）。
  * @param {Object} settings {extraInstruction, extraRules}
+ * @param {string} password 設定画面のパスワード
  * @return {string} 画面に出すメッセージ
  */
-function saveBotSettings(settings) {
+function saveBotSettings(settings, password) {
   try {
+    if (!checkSettingsPassword(password)) {
+      return 'パスワードが正しくありません。開き直してもう一度お試しください。';
+    }
     if (!isAdmin_()) {
       return '保存する権限がありません。管理者にお問い合わせください。';
     }

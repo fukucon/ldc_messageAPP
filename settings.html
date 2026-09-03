@@ -39,9 +39,34 @@
 
     .note { font-size: 13px; color: #5f6368; line-height: 1.7; background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
     .warn { background: #fdecea; border-color: #f5c6c2; color: #b3261e; }
+
+    /* ===== パスワードによるロック画面 ===== */
+    .lock { position: fixed; inset: 0; z-index: 30; background: #f1f3f4; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .lock[hidden] { display: none; }
+    .lock-box { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 22px; width: 100%; max-width: 340px; }
+    .lock-box h2 { margin: 0 0 6px; font-size: 16px; color: #202124; }
+    .lock-box p { margin: 0 0 14px; font-size: 13px; color: #5f6368; line-height: 1.6; }
+    /* font-size:16px は iOS で入力時に画面が拡大されるのを防ぐため */
+    .lock-box input { width: 100%; padding: 11px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+    .lock-err { color: #b3261e; font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+    .lock-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .lock-actions button { border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; cursor: pointer; background: #0b8043; color: #fff; }
   </style>
 </head>
 <body>
+  <!-- URLを直接開いた場合もパスワードを要求する -->
+  <div class="lock" id="lock">
+    <div class="lock-box">
+      <h2>設定を開く</h2>
+      <p>管理者用のパスワードを入力してください。</p>
+      <input type="password" id="lockPw" placeholder="パスワード" autocomplete="current-password">
+      <div class="lock-err" id="lockErr"></div>
+      <div class="lock-actions">
+        <button id="lockOk" onclick="unlock()">開く</button>
+      </div>
+    </div>
+  </div>
+
   <header>
     <div class="title">チャットボット設定</div>
     <a href="#" id="toBot">チャットへ →</a>
@@ -90,6 +115,7 @@
 
   <script>
     var canEdit = false;
+    var password = '';   // 認証済みのパスワードを保持（保存時に一緒に送る）
 
     // チャット画面へ戻る
     google.script.run.withSuccessHandler(function (url) {
@@ -99,30 +125,71 @@
       };
     }).getWebAppUrl();
 
-    // 現在の設定を読み込む
-    function load() {
-      document.getElementById('status').textContent = '読み込み中...';
+    /* ===== ロック解除 ===== */
+
+    // ロック画面から解除する
+    function unlock() {
+      var pw = document.getElementById('lockPw').value;
+      var err = document.getElementById('lockErr');
+      if (!pw) { err.textContent = 'パスワードを入力してください。'; return; }
+
+      document.getElementById('lockOk').disabled = true;
+      err.textContent = '確認中...';
+      tryLoad(pw, function () {
+        document.getElementById('lockOk').disabled = false;
+        err.textContent = 'パスワードが違います。';
+      });
+    }
+
+    document.getElementById('lockPw').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); unlock(); }
+    });
+
+    /**
+     * パスワードで設定を読み込む。失敗したら onFail を呼ぶ。
+     */
+    function tryLoad(pw, onFail) {
       google.script.run
         .withSuccessHandler(function (s) {
-          document.getElementById('extraInstruction').value = s.extraInstruction || '';
-          document.getElementById('extraRules').value = s.extraRules || '';
-          document.getElementById('rulesInfo').textContent =
-            '現在の就労規則の登録量：約' + (s.rulesLength || 0).toLocaleString() + '文字。';
+          // パスワードが違う場合はサーバーが null を返す
+          if (!s) { onFail(); return; }
 
-          canEdit = !!s.canEdit;
-          if (!canEdit) {
-            document.getElementById('readonlyNote').hidden = false;
-            document.getElementById('extraInstruction').disabled = true;
-            document.getElementById('extraRules').disabled = true;
-            document.getElementById('save').disabled = true;
-          }
-          document.getElementById('status').textContent = '';
+          password = pw;
+          try { sessionStorage.setItem('ldcSettingsPw', pw); } catch (e) {}
+          document.getElementById('lock').hidden = true;
+          applySettings(s);
         })
-        .withFailureHandler(function () {
-          document.getElementById('status').textContent = '';
-          alert('設定を読み込めませんでした。ページを再読み込みしてください。');
-        })
-        .getBotSettings();
+        .withFailureHandler(function () { onFail(); })
+        .getBotSettings(pw);
+    }
+
+    // 読み込んだ設定を画面に反映する
+    function applySettings(s) {
+      document.getElementById('extraInstruction').value = s.extraInstruction || '';
+      document.getElementById('extraRules').value = s.extraRules || '';
+      document.getElementById('rulesInfo').textContent =
+        '現在の就労規則の登録量：約' + (s.rulesLength || 0).toLocaleString() + '文字。';
+
+      canEdit = !!s.canEdit;
+      if (!canEdit) {
+        document.getElementById('readonlyNote').hidden = false;
+        document.getElementById('extraInstruction').disabled = true;
+        document.getElementById('extraRules').disabled = true;
+        document.getElementById('save').disabled = true;
+      }
+      document.getElementById('status').textContent = '';
+    }
+
+    // チャット画面でパスワードを入力済みなら、そのまま開く
+    function load() {
+      var saved = '';
+      try { saved = sessionStorage.getItem('ldcSettingsPw') || ''; } catch (e) {}
+      if (!saved) return; // ロック画面のまま待つ
+
+      tryLoad(saved, function () {
+        // 保存されていたパスワードが無効ならロック画面を出す
+        try { sessionStorage.removeItem('ldcSettingsPw'); } catch (e) {}
+      });
     }
 
     // 設定を保存する
@@ -146,7 +213,7 @@
         .saveBotSettings({
           extraInstruction: document.getElementById('extraInstruction').value,
           extraRules: document.getElementById('extraRules').value
-        });
+        }, password);
     }
 
     load();
