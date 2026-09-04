@@ -36,13 +36,17 @@
     .rule .rid.new { background: #fff4e5; color: #b06000; border-color: #f0c98a; }
     /* font-size:16px は iOS で入力時に画面が拡大されるのを防ぐため */
     .rule select {
-      flex: 0 0 auto; width: 130px; padding: 9px 8px; border: 1px solid #ccc;
+      flex: 0 0 auto; width: 116px; padding: 9px 8px; border: 1px solid #ccc;
       border-radius: 8px; font-size: 16px; font-family: inherit; background: #fff;
     }
     .rule input {
-      flex: 1 1 220px; min-width: 0; padding: 10px 12px; border: 1px solid #ccc;
+      flex: 1 1 100%; min-width: 0; padding: 10px 12px; border: 1px solid #ccc;
       border-radius: 8px; font-size: 16px; font-family: inherit;
     }
+    /* 入力欄の見出し（1行目だけ表示する） */
+    .rule-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; font-size: 12px; color: #5f6368; }
+    .rule-head .h-id { flex: 0 0 auto; min-width: 44px; text-align: center; }
+    .rule-head .h-sel { flex: 0 0 auto; width: 116px; }
     .rule select:disabled, .rule input:disabled { background: #f5f5f5; color: #80868b; }
     .rule .del {
       flex: 0 0 auto; border: none; background: #fdecea; color: #b3261e;
@@ -144,23 +148,11 @@
   <div class="modal" id="catModal" hidden>
     <div class="modal-box">
       <h3>新しいカテゴリ</h3>
-      <p>カテゴリを追加すると、参照シートも自動で作成されます。</p>
+      <p>追加ルールを分類する名前です（例：トラブル、請求、休暇）。</p>
 
       <div class="field">
         <label for="catName">カテゴリ名</label>
-        <input type="text" id="catName" placeholder="例：総務系">
-      </div>
-
-      <div class="field">
-        <label for="catSheet">参照シート名</label>
-        <input type="text" id="catSheet" placeholder="例：総務規程">
-        <div class="hint">規程の本文を貼り付けるシートです。空欄ならカテゴリ名と同じ名前で作成します。</div>
-      </div>
-
-      <div class="field">
-        <label for="catPrefix">ID接頭辞</label>
-        <input type="text" id="catPrefix" placeholder="例：S" maxlength="3">
-        <div class="hint">空欄なら未使用のアルファベットを自動で割り当てます。</div>
+        <input type="text" id="catName" placeholder="例：トラブル">
       </div>
 
       <div class="modal-err" id="catErr"></div>
@@ -173,9 +165,9 @@
 
   <script>
     var canEdit = false;
-    var password = '';       // 認証済みのパスワードを保持（保存時に一緒に送る）
-    var categories = [];     // 登録済みカテゴリ [{id, name, sheet, prefix}]
-    var newCategories = [];  // この画面で追加され、まだ保存していないカテゴリ
+    var password = '';     // 認証済みのパスワードを保持（保存時に一緒に送る）
+    var areas = [];        // 固定の分野 [{id, name, sheet, prefix}]
+    var categories = [];   // 既に使われているカテゴリ名の一覧
     var pendingSelect = null; // 「新しいカテゴリ」を選んだ <select>
 
     // メニュー画面へ戻る
@@ -235,8 +227,8 @@
 
     function applySettings(s) {
       canEdit = !!s.canEdit;
+      areas = s.areas || [];
       categories = s.categories || [];
-      newCategories = [];
 
       if (!canEdit) {
         document.getElementById('readonlyNote').hidden = false;
@@ -246,15 +238,22 @@
 
       var list = document.getElementById('ruleList');
       list.innerHTML = '';
-      (s.rules || []).forEach(function (r) {
-        addRuleRow(r);
-      });
+
+      // 見出し行
+      var head = document.createElement('div');
+      head.className = 'rule-head';
+      head.innerHTML = '<span class="h-id">ID</span>'
+        + '<span class="h-sel">分野</span>'
+        + '<span class="h-sel">カテゴリ</span>';
+      list.appendChild(head);
+
+      (s.rules || []).forEach(function (r) { addRuleRow(r); });
       updatePreview();
     }
 
     // ルール1行分の入力欄を作る
     function addRuleRow(rule) {
-      rule = rule || { ruleId: '', category: '', text: '' };
+      rule = rule || { ruleId: '', area: '', category: '', text: '' };
       var list = document.getElementById('ruleList');
 
       var row = document.createElement('div');
@@ -267,28 +266,31 @@
       badge.textContent = isNew ? '新規' : rule.ruleId;
       row.appendChild(badge);
 
-      // カテゴリのプルダウン（末尾に「新しいカテゴリ」を足す）
-      var sel = document.createElement('select');
-      sel.disabled = !canEdit;
-      fillCategoryOptions(sel, rule.category);
-      sel.addEventListener('change', function () {
-        if (sel.value === '__new__') {
-          openCatModal(sel);
+      // 分野（固定のプルダウン）
+      var areaSel = document.createElement('select');
+      areaSel.className = 'area-sel';
+      areaSel.disabled = !canEdit;
+      if (!rule.area) {
+        areaSel.appendChild(makeOption('', '分野を選択'));
+      }
+      areas.forEach(function (a) { areaSel.appendChild(makeOption(a.name, a.name)); });
+      areaSel.value = rule.area || '';
+      areaSel.addEventListener('change', updatePreview);
+      row.appendChild(areaSel);
+
+      // カテゴリ（既存から選択＋新規追加）
+      var catSel = document.createElement('select');
+      catSel.className = 'cat-sel';
+      catSel.disabled = !canEdit;
+      fillCategoryOptions(catSel, rule.category);
+      catSel.addEventListener('change', function () {
+        if (catSel.value === '__new__') {
+          openCatModal(catSel);
         } else {
           updatePreview();
         }
       });
-      row.appendChild(sel);
-
-      // ルール本文
-      var input = document.createElement('input');
-      input.type = 'text';
-      input.value = rule.text || '';
-      input.placeholder = '例：在宅勤務は週2日まで。前日までに上長へ申請すること。';
-      input.disabled = !canEdit;
-      input.dataset.ruleId = rule.ruleId || '';
-      input.addEventListener('input', updatePreview);
-      row.appendChild(input);
+      row.appendChild(catSel);
 
       // 削除
       var del = document.createElement('button');
@@ -302,40 +304,44 @@
       });
       row.appendChild(del);
 
+      // ルール本文（次の行に幅いっぱいで置く）
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = rule.text || '';
+      input.placeholder = '例：在宅勤務は週2日まで。前日までに上長へ申請すること。';
+      input.disabled = !canEdit;
+      input.dataset.ruleId = rule.ruleId || '';
+      input.addEventListener('input', updatePreview);
+      row.appendChild(input);
+
       list.appendChild(row);
       updatePreview();
     }
 
-    // プルダウンの選択肢を作り直す
+    function makeOption(value, label) {
+      var op = document.createElement('option');
+      op.value = value;
+      op.textContent = label;
+      return op;
+    }
+
+    // カテゴリのプルダウンを作り直す
     function fillCategoryOptions(sel, selectedName) {
-      var current = selectedName || sel.value || '';
+      var current = selectedName !== undefined ? selectedName : sel.value;
       sel.innerHTML = '';
 
       if (!current) {
-        var ph = document.createElement('option');
-        ph.value = '';
-        ph.textContent = 'カテゴリ選択';
-        sel.appendChild(ph);
+        sel.appendChild(makeOption('', 'カテゴリ選択'));
       }
+      categories.forEach(function (name) { sel.appendChild(makeOption(name, name)); });
+      sel.appendChild(makeOption('__new__', '＋ 新しいカテゴリ…'));
 
-      categories.forEach(function (c) {
-        var op = document.createElement('option');
-        op.value = c.name;
-        op.textContent = c.name;
-        sel.appendChild(op);
-      });
-
-      var add = document.createElement('option');
-      add.value = '__new__';
-      add.textContent = '＋ 新しいカテゴリ…';
-      sel.appendChild(add);
-
-      sel.value = current;
+      sel.value = current || '';
     }
 
-    // すべてのプルダウンを作り直す（カテゴリ追加時）
-    function refreshAllSelects() {
-      var sels = document.querySelectorAll('.rule select');
+    // すべてのカテゴリのプルダウンを作り直す
+    function refreshAllCategorySelects() {
+      var sels = document.querySelectorAll('.cat-sel');
       for (var i = 0; i < sels.length; i++) {
         fillCategoryOptions(sels[i], sels[i].value === '__new__' ? '' : sels[i].value);
       }
@@ -346,8 +352,6 @@
     function openCatModal(sel) {
       pendingSelect = sel || null;
       document.getElementById('catName').value = '';
-      document.getElementById('catSheet').value = '';
-      document.getElementById('catPrefix').value = '';
       document.getElementById('catErr').textContent = '';
       document.getElementById('catModal').hidden = false;
       setTimeout(function () { document.getElementById('catName').focus(); }, 50);
@@ -364,31 +368,23 @@
 
     function submitCat() {
       var name = document.getElementById('catName').value.trim();
-      var sheet = document.getElementById('catSheet').value.trim();
-      var prefix = document.getElementById('catPrefix').value.trim().toUpperCase();
       var err = document.getElementById('catErr');
 
       if (!name) { err.textContent = 'カテゴリ名を入力してください。'; return; }
-      for (var i = 0; i < categories.length; i++) {
-        if (categories[i].name === name) {
-          err.textContent = 'その名前のカテゴリはすでにあります。';
-          return;
-        }
+      if (categories.indexOf(name) >= 0) {
+        err.textContent = 'その名前のカテゴリはすでにあります。';
+        return;
       }
 
-      // 画面上のカテゴリ一覧に足す（実際の登録は保存時）
-      var cat = { id: '', name: name, sheet: sheet || name, prefix: prefix || '?' };
-      categories.push(cat);
-      newCategories.push({ name: name, sheet: sheet, prefix: prefix });
+      categories.push(name);
+      categories.sort();
 
       var target = pendingSelect;
       document.getElementById('catModal').hidden = true;
       pendingSelect = null;
 
-      refreshAllSelects();
-      if (target) {
-        fillCategoryOptions(target, name);
-      }
+      refreshAllCategorySelects();
+      if (target) { fillCategoryOptions(target, name); }
       updatePreview();
     }
 
@@ -402,20 +398,21 @@
     function updatePreview() {
       var pv = document.getElementById('preview');
       var rows = document.querySelectorAll('.rule');
-      var byCat = {};
+      var byArea = {};
       var order = [];
 
       for (var i = 0; i < rows.length; i++) {
-        var sel = rows[i].querySelector('select');
+        var areaName = rows[i].querySelector('.area-sel').value;
+        var catName = rows[i].querySelector('.cat-sel').value;
         var input = rows[i].querySelector('input');
-        var name = sel.value;
-        if (!name || name === '__new__') continue;
+        if (!areaName) continue;
         var text = input.value.replace(/[\r\n]+/g, ' ').trim();
         if (!text) continue;
+        if (catName === '__new__') catName = '';
 
         var rid = input.dataset.ruleId || '（保存時に採番）';
-        if (!byCat[name]) { byCat[name] = []; order.push(name); }
-        byCat[name].push(name + '：' + text + '[' + rid + ']');
+        if (!byArea[areaName]) { byArea[areaName] = []; order.push(areaName); }
+        byArea[areaName].push((catName ? catName + '：' : '') + text + '[' + rid + ']');
       }
 
       if (!order.length) {
@@ -424,19 +421,19 @@
       }
 
       var html = '';
-      order.forEach(function (name) {
-        var cat = findCat(name);
-        html += '<strong>「' + escHtml(cat ? cat.sheet : name) + '」シートの末尾に書き出される内容</strong>';
-        byCat[name].forEach(function (l) {
+      order.forEach(function (areaName) {
+        var a = findArea(areaName);
+        html += '<strong>「' + escHtml(a ? a.sheet : areaName) + '」シートの末尾に書き出される内容</strong>';
+        byArea[areaName].forEach(function (l) {
           html += '<div class="line">' + escHtml(l) + '</div>';
         });
       });
       pv.innerHTML = html;
     }
 
-    function findCat(name) {
-      for (var i = 0; i < categories.length; i++) {
-        if (categories[i].name === name) return categories[i];
+    function findArea(name) {
+      for (var i = 0; i < areas.length; i++) {
+        if (areas[i].name === name) return areas[i];
       }
       return null;
     }
@@ -452,19 +449,27 @@
     function save() {
       if (!canEdit) return;
 
-      // カテゴリ未選択の行があれば知らせる
       var rows = document.querySelectorAll('.rule');
       var rules = [];
       for (var i = 0; i < rows.length; i++) {
-        var sel = rows[i].querySelector('select');
+        var areaName = rows[i].querySelector('.area-sel').value;
+        var catName = rows[i].querySelector('.cat-sel').value;
         var input = rows[i].querySelector('input');
         var text = input.value.trim();
         if (!text) continue; // 空欄は送らない
-        if (!sel.value || sel.value === '__new__') {
-          alert('カテゴリが選ばれていないルールがあります。');
+
+        if (!areaName) {
+          alert('分野が選ばれていないルールがあります。');
           return;
         }
-        rules.push({ ruleId: input.dataset.ruleId || '', category: sel.value, text: text });
+        if (catName === '__new__') catName = '';
+
+        rules.push({
+          ruleId: input.dataset.ruleId || '',
+          area: areaName,
+          category: catName,
+          text: text
+        });
       }
 
       document.getElementById('save').disabled = true;
@@ -474,7 +479,7 @@
         .withSuccessHandler(function (msg) {
           document.getElementById('status').textContent = msg;
           document.getElementById('save').disabled = false;
-          // 採番されたIDと新カテゴリを反映するため読み直す
+          // 採番されたIDを反映するため読み直す
           if (msg === '保存しました') {
             tryLoad(password, function () {});
           }
@@ -485,7 +490,7 @@
           document.getElementById('save').disabled = false;
           alert('保存できませんでした。もう一度お試しください。');
         })
-        .saveBotSettings({ rules: rules, newCategories: newCategories }, password);
+        .saveBotSettings({ rules: rules }, password);
     }
   </script>
 </body>

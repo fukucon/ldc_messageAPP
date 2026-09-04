@@ -1,8 +1,12 @@
 /**
  * code.gs
  * AIチャットボットのメイン動作。
- * カテゴリ（労務系・経理系・購買系）ごとに参照する規程シートを切り替える。
- * カテゴリ定義やシート名は setup.gs を参照。
+ * 分野（労務系・経理系・購買系）ごとに参照する規程シートを切り替える。
+ * 分野の定義やシート名は setup.gs を参照。
+ *
+ * 用語：
+ * - 分野   … 固定の大枠。メニューの選択肢で、規程シートに対応する。
+ * - カテゴリ … トラブル・請求など、追加ルールを分類する小分類（自由に設定）。
  *
  * 退避したコード：
  * - PDF/画像OCR機能 … OCR.md
@@ -16,7 +20,7 @@
 /**
  * Webアプリのエントリーポイント。
  * - パラメータなし        … メニュー画面（index.html）
- * - ?app=bot&cat=<id>    … カテゴリ別チャット画面（bot.html）
+ * - ?app=bot&cat=<id>    … 分野別チャット画面（bot.html）
  * - ?app=settings        … 設定画面（settings.html）
  */
 function doGet(e) {
@@ -30,16 +34,16 @@ function doGet(e) {
   }
 
   if (app === 'bot') {
-    var category = findCategory_(params.cat);
-    if (!category) {
-      // 不正なカテゴリならメニューに戻す
+    var area = findArea_(params.cat);
+    if (!area) {
+      // 不正な分野ならメニューに戻す
       return renderMenu_();
     }
-    // カテゴリ情報を埋め込んで返す（iframe内からURLを読めないため）
+    // 分野の情報を埋め込んで返す（iframe内からURLを読めないため）
     var page = HtmlService.createTemplateFromFile('bot');
-    page.categoryJson = JSON.stringify({ id: category.id, name: category.name });
+    page.categoryJson = JSON.stringify({ id: area.id, name: area.name });
     return page.evaluate()
-      .setTitle('AIチャットボット｜' + category.name)
+      .setTitle('AIチャットボット｜' + area.name)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
 
@@ -52,8 +56,8 @@ function doGet(e) {
  */
 function renderMenu_() {
   var page = HtmlService.createTemplateFromFile('index');
-  page.categoriesJson = JSON.stringify(getCategories_().map(function (c) {
-    return { id: c.id, name: c.name, desc: c.desc, icon: c.icon };
+  page.categoriesJson = JSON.stringify(AREAS.map(function (a) {
+    return { id: a.id, name: a.name, desc: a.desc, icon: a.icon };
   }));
   return page.evaluate()
     .setTitle('AIチャットボット')
@@ -76,48 +80,25 @@ function getCurrentUser() {
   return email || 'ゲスト';
 }
 
-// 「カテゴリ」シートの読み込み結果（1回の実行内でのみ使い回す）
-var _categoryCache = null;
-
 /**
- * カテゴリ定義を取得する（「カテゴリ」シートから読み込む）。
- * @return {Array<Object>} [{id, name, desc, sheet, prefix, icon}]
+ * 分野IDから定義を探す。見つからなければ null。
  */
-function getCategories_() {
-  if (!_categoryCache) {
-    _categoryCache = readCategorySheet_();
-  }
-  return _categoryCache;
-}
-
-/**
- * キャッシュを捨てて次回読み直させる。
- */
-function clearCategoryCache_() {
-  _categoryCache = null;
-}
-
-/**
- * カテゴリIDから定義を探す。見つからなければ null。
- */
-function findCategory_(id) {
-  var cats = getCategories_();
-  for (var i = 0; i < cats.length; i++) {
-    if (cats[i].id === id) {
-      return cats[i];
+function findArea_(id) {
+  for (var i = 0; i < AREAS.length; i++) {
+    if (AREAS[i].id === id) {
+      return AREAS[i];
     }
   }
   return null;
 }
 
 /**
- * カテゴリ名から定義を探す。見つからなければ null。
+ * 分野名から定義を探す。見つからなければ null。
  */
-function findCategoryByName_(name) {
-  var cats = getCategories_();
-  for (var i = 0; i < cats.length; i++) {
-    if (cats[i].name === name) {
-      return cats[i];
+function findAreaByName_(name) {
+  for (var i = 0; i < AREAS.length; i++) {
+    if (AREAS[i].name === name) {
+      return AREAS[i];
     }
   }
   return null;
@@ -182,13 +163,13 @@ var BOT_SYSTEM_INSTRUCTION =
   '可能であれば、根拠となる条文や項目名も添えてください。';
 
 /**
- * 指定カテゴリの規程シートから本文を読み込んで1つの文字列にする。
+ * 指定分野の規程シートから本文を読み込んで1つの文字列にする。
  * 1行目は説明行のため除外し、2行目以降を連結する。
- * @param {Object} category カテゴリ定義
+ * @param {Object} area 分野定義
  * @return {string} 規程の全文（未登録なら空文字）
  */
-function getRulesText_(category) {
-  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(category.sheet);
+function getRulesText_(area) {
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(area.sheet);
   if (!sheet) {
     return '';
   }
@@ -210,19 +191,19 @@ function getRulesText_(category) {
  * 規程についての質問に回答する。
  * 規程の全文＋設定＋質問を Gemini に渡し、回答テキストを返す。
  * エラー時は例外をthrowせず、平易なエラーメッセージ文字列を返す。
- * @param {string} categoryId カテゴリID
- * @param {string} question   社員からの質問
+ * @param {string} areaId   分野ID
+ * @param {string} question 社員からの質問
  * @return {string} 回答テキスト（または失敗時のエラーメッセージ）
  */
-function askBot(categoryId, question) {
-  var category = findCategory_(categoryId);
+function askBot(areaId, question) {
+  var area = findArea_(areaId);
   try {
     question = (question || '').toString().trim();
     if (!question) {
       return '質問を入力してください。';
     }
-    if (!category) {
-      Logger.log('不正なカテゴリID: ' + categoryId);
+    if (!area) {
+      Logger.log('不正な分野ID: ' + areaId);
       return USER_ERROR_CONTACT;
     }
 
@@ -233,23 +214,23 @@ function askBot(categoryId, question) {
     }
 
     // 追加ルールは規程シートの末尾に書き込まれているので、シートを読むだけでよい
-    var rules = getRulesText_(category);
+    var rules = getRulesText_(area);
 
     if (!rules) {
-      Logger.log('「' + category.sheet + '」シートが空です。');
-      return category.name + 'の規程がまだ登録されていません。管理者にお問い合わせください。';
+      Logger.log('「' + area.sheet + '」シートが空です。');
+      return area.name + 'の規程がまだ登録されていません。管理者にお問い合わせください。';
     }
 
     // プロンプトを組み立てる（基本指示＋規程本文＋質問）
-    var prompt = BOT_SYSTEM_INSTRUCTION.replace('{CATEGORY}', category.name) +
-      '\n\n===== ' + category.name + 'の規程ここから =====\n' + rules +
-      '\n===== ' + category.name + 'の規程ここまで =====\n\n' +
+    var prompt = BOT_SYSTEM_INSTRUCTION.replace('{CATEGORY}', area.name) +
+      '\n\n===== ' + area.name + 'の規程ここから =====\n' + rules +
+      '\n===== ' + area.name + 'の規程ここまで =====\n\n' +
       '【社員からの質問】\n' + question;
 
     var answer = callGeminiText_(prompt, apiKey);
 
     // 質問と回答をログシートに記録する
-    logBotQa_(category.name, question, answer);
+    logBotQa_(area.name, question, answer);
 
     return answer;
 
@@ -257,7 +238,7 @@ function askBot(categoryId, question) {
     // 技術的な詳細はログにだけ残し、画面には平易な文言を返す
     Logger.log('askBot エラー: ' + e.message);
     // 失敗した質問も履歴に残す
-    logBotQa_(category ? category.name : '', question, USER_ERROR_RETRY);
+    logBotQa_(area ? area.name : '', question, USER_ERROR_RETRY);
     return USER_ERROR_RETRY;
   }
 }
@@ -309,7 +290,7 @@ function callGeminiText_(promptText, apiKey) {
 /**
  * 質問と回答を「質問ログ」シートに記録する。失敗しても本処理は止めない。
  */
-function logBotQa_(categoryName, question, answer) {
+function logBotQa_(areaName, question, answer) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(BOT_LOG_SHEET);
@@ -317,7 +298,7 @@ function logBotQa_(categoryName, question, answer) {
       sheet = ss.insertSheet(BOT_LOG_SHEET);
       sheet.appendRow(BOT_LOG_HEADER);
     }
-    sheet.appendRow([new Date(), categoryName, getCurrentUser(), question, answer]);
+    sheet.appendRow([new Date(), areaName, getCurrentUser(), question, answer]);
   } catch (e) {
     // ログ失敗は無視
   }
@@ -325,14 +306,14 @@ function logBotQa_(categoryName, question, answer) {
 
 /**
  * ログイン中の社員の質問履歴を新しい順に取得する。
- * 指定カテゴリの質問のみ、重複を除いて最大50件返す。
- * @param {string} categoryId カテゴリID
+ * 指定分野の質問のみ、重複を除いて最大50件返す。
+ * @param {string} areaId 分野ID
  * @return {Array<Object>} [{question, at}] at はエポックミリ秒
  */
-function getQuestionHistory(categoryId) {
+function getQuestionHistory(areaId) {
   try {
-    var category = findCategory_(categoryId);
-    if (!category) {
+    var area = findArea_(areaId);
+    if (!area) {
       return [];
     }
     var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BOT_LOG_SHEET);
@@ -345,10 +326,10 @@ function getQuestionHistory(categoryId) {
     var list = [];
 
     // 新しい順に走査（1行目はヘッダーなので除外）
-    // 列: 0=日時 1=カテゴリ 2=社員 3=質問 4=回答
+    // 列: 0=日時 1=分野 2=社員 3=質問 4=回答
     for (var i = values.length - 1; i >= 1; i--) {
       var row = values[i];
-      if (row[1] !== category.name) continue; // このカテゴリのみ
+      if (row[1] !== area.name) continue;     // この分野のみ
       if (row[2] !== user) continue;          // 自分の質問のみ
 
       var q = (row[3] || '').toString().trim();
@@ -409,7 +390,7 @@ function isAdmin_() {
 
 /**
  * 設定シートを取得する（無ければ作成する）。
- * 形式は [ID, カテゴリ, 追加ルール]（1行 = 1ルール）。
+ * 形式は [ID, 分野, カテゴリ, 追加ルール]（1行 = 1ルール）。
  */
 function getSettingsSheet_() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -422,52 +403,57 @@ function getSettingsSheet_() {
 }
 
 /**
- * 設定シートから指定カテゴリの追加ルールを読む。
- * @param {Object} category カテゴリ定義
- * @return {Array<Object>} [{ruleId, text}]
+ * 設定シートの全ルールを読む。
+ * @return {Array<Object>} [{ruleId, area, category, text}]
  */
-function readCategoryRules_(category) {
+function readAllRules_() {
   try {
     var values = getSettingsSheet_().getDataRange().getValues();
     var list = [];
-    // 列: 0=ID 1=カテゴリ 2=追加ルール
+    // 列: 0=ID 1=分野 2=カテゴリ 3=追加ルール
     for (var i = 1; i < values.length; i++) {
-      if (values[i][1] !== category.name) continue;
-      var text = (values[i][2] || '').toString().trim();
-      if (!text) continue;
-      list.push({ ruleId: (values[i][0] || '').toString(), text: text });
+      var area = (values[i][1] || '').toString().trim();
+      var text = (values[i][3] || '').toString().trim();
+      if (!area || !text) continue;
+      list.push({
+        ruleId: (values[i][0] || '').toString().trim(),
+        area: area,
+        category: (values[i][2] || '').toString().trim(),
+        text: text
+      });
     }
     return list;
   } catch (e) {
-    Logger.log('readCategoryRules_ エラー: ' + e.message);
+    Logger.log('readAllRules_ エラー: ' + e.message);
     return [];
   }
 }
 
 /**
  * 追加ルールを規程シートに書き出す1行分のテキストを組み立てる。
- * 形式：カテゴリ名：ルール本文[ID]
+ * 形式：カテゴリ：ルール本文[ID]（カテゴリが空なら ルール本文[ID]）
  */
-function buildRuleLine_(category, ruleId, text) {
+function buildRuleLine_(categoryName, ruleId, text) {
   // 改行を空白に潰して、必ずA列1行に収める
   var oneLine = String(text).replace(/[\r\n]+/g, ' ').trim();
-  return category.name + '：' + oneLine + '[' + ruleId + ']';
+  var head = (categoryName || '').toString().trim();
+  return (head ? head + '：' : '') + oneLine + '[' + ruleId + ']';
 }
 
 /**
- * 規程シートの末尾に、そのカテゴリの追加ルールを書き出す。
+ * 規程シートの末尾に、その分野の追加ルールを書き出す。
  * 既に書かれている追加ルール行（末尾が [ID] の行）はいったん全部消してから入れ直す。
- * @param {Object} category カテゴリ定義
+ * @param {Object} area 分野定義
  */
-function syncRulesToSheet_(category) {
-  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(category.sheet);
+function syncRulesToSheet_(area) {
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(area.sheet);
   if (!sheet) {
-    Logger.log('規程シートがありません: ' + category.sheet);
+    Logger.log('規程シートがありません: ' + area.sheet);
     return;
   }
 
   // 既存の追加ルール行を削除（下から消すと行番号がずれない）
-  var marker = new RegExp('\\[' + category.prefix + '\\d+\\]\\s*$');
+  var marker = new RegExp('\\[' + area.prefix + '\\d+\\]\\s*$');
   var last = sheet.getLastRow();
   if (last >= 2) {
     var colA = sheet.getRange(2, 1, last - 1, 1).getValues();
@@ -479,23 +465,24 @@ function syncRulesToSheet_(category) {
   }
 
   // 現在の追加ルールを末尾に追記
-  var rules = readCategoryRules_(category);
-  for (var n = 0; n < rules.length; n++) {
-    sheet.appendRow([buildRuleLine_(category, rules[n].ruleId, rules[n].text)]);
+  var all = readAllRules_();
+  for (var n = 0; n < all.length; n++) {
+    if (all[n].area !== area.name) continue;
+    sheet.appendRow([buildRuleLine_(all[n].category, all[n].ruleId, all[n].text)]);
   }
 }
 
 /**
- * 指定カテゴリで既に使われている追加ルール番号の最大値を返す。
+ * 指定分野で既に使われている追加ルール番号の最大値を返す。
  * 設定シートの既存IDと、画面から送られてきたIDの両方を見る。
  * （削除された番号を再利用しないため、削除前の状態を渡すこと）
- * @param {Object} category カテゴリ定義
- * @param {Array}  values   設定シートの全データ（削除前）
- * @param {Array}  rules    画面から送られてきたルール配列
+ * @param {Object} area   分野定義
+ * @param {Array}  values 設定シートの全データ（削除前）
+ * @param {Array}  rules  画面から送られてきたルール配列
  * @return {number} 最大番号（1件も無ければ 0）
  */
-function maxRuleNumber_(category, values, rules) {
-  var re = new RegExp('^' + category.prefix + '(\\d+)$');
+function maxRuleNumber_(area, values, rules) {
+  var re = new RegExp('^' + area.prefix + '(\\d+)$');
   var max = 0;
 
   for (var i = 1; i < values.length; i++) {
@@ -516,112 +503,45 @@ function maxRuleNumber_(category, values, rules) {
 }
 
 /**
- * 設定画面用：カテゴリ一覧と全追加ルールを取得する（パスワードが必要）。
+ * 設定画面用：分野一覧・既存カテゴリ・全追加ルールを取得する（パスワードが必要）。
  * @param {string} password 設定画面のパスワード
- * @return {Object|null} 正しければ {canEdit, categories, rules}、違えば null
+ * @return {Object|null} 正しければ {canEdit, areas, categories, rules}、違えば null
  */
 function getBotSettings(password) {
   if (!checkSettingsPassword(password)) {
     return null;
   }
   try {
-    clearCategoryCache_();
-    var cats = getCategories_().map(function (c) {
-      return { id: c.id, name: c.name, sheet: c.sheet, prefix: c.prefix };
+    var rules = readAllRules_();
+
+    // 既にカテゴリとして使われている名前を集める（プルダウンの選択肢）
+    var seen = {};
+    var categories = [];
+    for (var i = 0; i < rules.length; i++) {
+      var c = rules[i].category;
+      if (c && !seen[c]) {
+        seen[c] = true;
+        categories.push(c);
+      }
+    }
+    categories.sort();
+
+    var areas = AREAS.map(function (a) {
+      return { id: a.id, name: a.name, sheet: a.sheet, prefix: a.prefix };
     });
 
-    // 設定シートの全ルールを上から順に返す
-    var values = getSettingsSheet_().getDataRange().getValues();
-    var rules = [];
-    for (var i = 1; i < values.length; i++) {
-      var ruleId = (values[i][0] || '').toString().trim();
-      var name = (values[i][1] || '').toString().trim();
-      var text = (values[i][2] || '').toString().trim();
-      if (!name || !text) continue;
-      rules.push({ ruleId: ruleId, category: name, text: text });
-    }
-
-    return { canEdit: isAdmin_(), categories: cats, rules: rules };
+    return { canEdit: isAdmin_(), areas: areas, categories: categories, rules: rules };
   } catch (e) {
     Logger.log('getBotSettings エラー: ' + e.message);
-    return { canEdit: false, categories: [], rules: [] };
+    return { canEdit: false, areas: [], categories: [], rules: [] };
   }
-}
-
-/**
- * カテゴリを新規登録する。参照シートが無ければ作成する。
- * @param {Object} input {name, sheet, prefix}
- * @return {Object|null} 登録したカテゴリ定義（失敗時 null）
- */
-function createCategory_(input) {
-  var name = (input.name || '').toString().trim();
-  if (!name) {
-    return null;
-  }
-  // 同名があればそれを使う
-  var exists = findCategoryByName_(name);
-  if (exists) {
-    return exists;
-  }
-
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var cats = getCategories_();
-
-  // 参照シート名（未指定ならカテゴリ名をそのまま使う）
-  var sheetName = (input.sheet || '').toString().trim() || name;
-
-  // ID接頭辞（未指定なら未使用の英大文字を自動で割り当てる）
-  var prefix = (input.prefix || '').toString().trim().toUpperCase();
-  if (!prefix) {
-    prefix = nextFreePrefix_(cats);
-  }
-
-  // URL用のID（英数字。重複しないよう連番を足す）
-  var baseId = 'cat';
-  var newId = baseId + (cats.length + 1);
-  var n = cats.length + 1;
-  while (findCategory_(newId)) {
-    n += 1;
-    newId = baseId + n;
-  }
-
-  // 規程シートを用意
-  setupRulesSheet_(ss, sheetName);
-
-  // カテゴリシートへ追記
-  var sheet = ss.getSheetByName(CATEGORY_SHEET);
-  if (!sheet) {
-    sheet = setupSheet_(ss, CATEGORY_SHEET, CATEGORY_HEADER);
-  }
-  sheet.appendRow([newId, name, (input.desc || '').toString(), sheetName, prefix, (input.icon || '💬').toString()]);
-
-  clearCategoryCache_();
-  return findCategoryByName_(name);
-}
-
-/**
- * まだ使われていないID接頭辞（英大文字1文字）を返す。
- */
-function nextFreePrefix_(cats) {
-  var used = {};
-  for (var i = 0; i < cats.length; i++) {
-    used[(cats[i].prefix || '').toUpperCase()] = true;
-  }
-  var letters = 'CDEFGHIJLMNOPQSTUVWXYZAB';
-  for (var k = 0; k < letters.length; k++) {
-    if (!used[letters.charAt(k)]) {
-      return letters.charAt(k);
-    }
-  }
-  return 'X';
 }
 
 /**
  * 設定画面用：追加ルールを保存する（パスワードが必要）。
- * ルールは [{ruleId, category, text}] のフラットな配列で受け取る。
- * 新しいカテゴリ名が含まれていれば、そのカテゴリと規程シートを作成する。
+ * ルールは [{ruleId, area, category, text}] のフラットな配列で受け取る。
  * 保存後、各規程シートの末尾へ反映する。
- * @param {Object} payload  {rules:[...], newCategories:[{name, sheet, prefix}]}
+ * @param {Object} payload  {rules:[...]}
  * @param {string} password 設定画面のパスワード
  * @return {string} 画面に出すメッセージ
  */
@@ -637,57 +557,49 @@ function saveBotSettings(payload, password) {
     payload = payload || {};
     var incoming = payload.rules || [];
 
-    clearCategoryCache_();
-
-    // 先に新規カテゴリを登録する（規程シートもここで作られる）
-    var newCats = payload.newCategories || [];
-    for (var a = 0; a < newCats.length; a++) {
-      createCategory_(newCats[a]);
-    }
-
     var sheet = getSettingsSheet_();
     var original = sheet.getDataRange().getValues(); // 採番の基準（削除前の状態）
 
-    // カテゴリごとに採番カウンタを用意する
+    // 分野ごとに採番カウンタを用意する
     var counters = {};
-    var cats = getCategories_();
-    for (var c = 0; c < cats.length; c++) {
-      counters[cats[c].name] = maxRuleNumber_(cats[c], original, incoming);
+    for (var a = 0; a < AREAS.length; a++) {
+      counters[AREAS[a].name] = maxRuleNumber_(AREAS[a], original, incoming);
     }
 
     // 保存する行を組み立てる
     var rows = [];
-    var touched = {};  // 規程シートへの反映が必要なカテゴリ
+    var touched = {};  // 規程シートへの反映が必要な分野
     for (var i = 0; i < incoming.length; i++) {
-      var name = (incoming[i].category || '').toString().trim();
-      var category = findCategoryByName_(name);
-      if (!category) continue; // 未登録カテゴリは無視
+      var area = findAreaByName_((incoming[i].area || '').toString().trim());
+      if (!area) continue; // 未知の分野は無視
 
       var text = (incoming[i].text || '').toString().replace(/[\r\n]+/g, ' ').trim();
-      if (!text) continue;     // 空欄は登録しない
+      if (!text) continue; // 空欄は登録しない
+
+      var category = (incoming[i].category || '').toString().replace(/[\r\n]+/g, ' ').trim();
 
       // 既存IDはそのまま使い、新規は続き番号を振る
       var ruleId = (incoming[i].ruleId || '').toString().trim();
       if (!ruleId) {
-        counters[category.name] = (counters[category.name] || 0) + 1;
-        ruleId = category.prefix + counters[category.name];
+        counters[area.name] = (counters[area.name] || 0) + 1;
+        ruleId = area.prefix + counters[area.name];
       }
-      rows.push([ruleId, category.name, text]);
-      touched[category.name] = category;
+      rows.push([ruleId, area.name, category, text]);
+      touched[area.name] = area;
     }
 
-    // 元々ルールがあったカテゴリも、消えた行を反映するため対象に入れる
+    // 元々ルールがあった分野も、消えた行を反映するため対象に入れる
     for (var r = 1; r < original.length; r++) {
       var oldName = (original[r][1] || '').toString().trim();
       if (!oldName || touched[oldName]) continue;
-      var oldCat = findCategoryByName_(oldName);
-      if (oldCat) touched[oldName] = oldCat;
+      var oldArea = findAreaByName_(oldName);
+      if (oldArea) touched[oldName] = oldArea;
     }
 
-    // カテゴリの並び順 → ID番号順に並べ替えて見やすくする
+    // 分野の並び順 → ID番号順に並べ替えて見やすくする
     rows.sort(function (x, y) {
-      var ox = categoryOrder_(x[1]);
-      var oy = categoryOrder_(y[1]);
+      var ox = areaOrder_(x[1]);
+      var oy = areaOrder_(y[1]);
       if (ox !== oy) return ox - oy;
       return ruleNumber_(x[0]) - ruleNumber_(y[0]);
     });
@@ -718,14 +630,13 @@ function saveBotSettings(payload, password) {
 }
 
 /**
- * カテゴリ名の並び順（「カテゴリ」シートの並び順）。未知は最後。
+ * 分野名の並び順（AREAS の定義順）。未知は最後。
  */
-function categoryOrder_(name) {
-  var cats = getCategories_();
-  for (var i = 0; i < cats.length; i++) {
-    if (cats[i].name === name) return i;
+function areaOrder_(name) {
+  for (var i = 0; i < AREAS.length; i++) {
+    if (AREAS[i].name === name) return i;
   }
-  return cats.length;
+  return AREAS.length;
 }
 
 /**
