@@ -52,7 +52,7 @@ function doGet(e) {
  */
 function renderMenu_() {
   var page = HtmlService.createTemplateFromFile('index');
-  page.categoriesJson = JSON.stringify(CATEGORIES.map(function (c) {
+  page.categoriesJson = JSON.stringify(getCategories_().map(function (c) {
     return { id: c.id, name: c.name, desc: c.desc, icon: c.icon };
   }));
   return page.evaluate()
@@ -76,13 +76,48 @@ function getCurrentUser() {
   return email || 'ゲスト';
 }
 
+// 「カテゴリ」シートの読み込み結果（1回の実行内でのみ使い回す）
+var _categoryCache = null;
+
+/**
+ * カテゴリ定義を取得する（「カテゴリ」シートから読み込む）。
+ * @return {Array<Object>} [{id, name, desc, sheet, prefix, icon}]
+ */
+function getCategories_() {
+  if (!_categoryCache) {
+    _categoryCache = readCategorySheet_();
+  }
+  return _categoryCache;
+}
+
+/**
+ * キャッシュを捨てて次回読み直させる。
+ */
+function clearCategoryCache_() {
+  _categoryCache = null;
+}
+
 /**
  * カテゴリIDから定義を探す。見つからなければ null。
  */
 function findCategory_(id) {
-  for (var i = 0; i < CATEGORIES.length; i++) {
-    if (CATEGORIES[i].id === id) {
-      return CATEGORIES[i];
+  var cats = getCategories_();
+  for (var i = 0; i < cats.length; i++) {
+    if (cats[i].id === id) {
+      return cats[i];
+    }
+  }
+  return null;
+}
+
+/**
+ * カテゴリ名から定義を探す。見つからなければ null。
+ */
+function findCategoryByName_(name) {
+  var cats = getCategories_();
+  for (var i = 0; i < cats.length; i++) {
+    if (cats[i].name === name) {
+      return cats[i];
     }
   }
   return null;
@@ -481,41 +516,116 @@ function maxRuleNumber_(category, values, rules) {
 }
 
 /**
- * 設定画面用：全カテゴリの追加ルールを取得する（パスワードが必要）。
+ * 設定画面用：カテゴリ一覧と全追加ルールを取得する（パスワードが必要）。
  * @param {string} password 設定画面のパスワード
- * @return {Object|null} 正しければ {canEdit, categories:[...]}、違えば null
+ * @return {Object|null} 正しければ {canEdit, categories, rules}、違えば null
  */
 function getBotSettings(password) {
   if (!checkSettingsPassword(password)) {
     return null;
   }
   try {
-    var list = CATEGORIES.map(function (c) {
-      return {
-        id: c.id,
-        name: c.name,
-        desc: c.desc,
-        sheet: c.sheet,
-        prefix: c.prefix,
-        rules: readCategoryRules_(c),
-        rulesLength: getRulesText_(c).length // 規程シート全体の文字数（目安表示用）
-      };
+    clearCategoryCache_();
+    var cats = getCategories_().map(function (c) {
+      return { id: c.id, name: c.name, sheet: c.sheet, prefix: c.prefix };
     });
-    return { canEdit: isAdmin_(), categories: list };
+
+    // 設定シートの全ルールを上から順に返す
+    var values = getSettingsSheet_().getDataRange().getValues();
+    var rules = [];
+    for (var i = 1; i < values.length; i++) {
+      var ruleId = (values[i][0] || '').toString().trim();
+      var name = (values[i][1] || '').toString().trim();
+      var text = (values[i][2] || '').toString().trim();
+      if (!name || !text) continue;
+      rules.push({ ruleId: ruleId, category: name, text: text });
+    }
+
+    return { canEdit: isAdmin_(), categories: cats, rules: rules };
   } catch (e) {
     Logger.log('getBotSettings エラー: ' + e.message);
-    return { canEdit: false, categories: [] };
+    return { canEdit: false, categories: [], rules: [] };
   }
 }
 
 /**
- * 設定画面用：全カテゴリの追加ルールを保存する（パスワードが必要）。
- * 設定シートを書き換えたあと、各規程シートの末尾へ反映する。
- * @param {Array<Object>} items    [{id, rules:[{ruleId, text}]}]
- * @param {string}        password 設定画面のパスワード
+ * カテゴリを新規登録する。参照シートが無ければ作成する。
+ * @param {Object} input {name, sheet, prefix}
+ * @return {Object|null} 登録したカテゴリ定義（失敗時 null）
+ */
+function createCategory_(input) {
+  var name = (input.name || '').toString().trim();
+  if (!name) {
+    return null;
+  }
+  // 同名があればそれを使う
+  var exists = findCategoryByName_(name);
+  if (exists) {
+    return exists;
+  }
+
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var cats = getCategories_();
+
+  // 参照シート名（未指定ならカテゴリ名をそのまま使う）
+  var sheetName = (input.sheet || '').toString().trim() || name;
+
+  // ID接頭辞（未指定なら未使用の英大文字を自動で割り当てる）
+  var prefix = (input.prefix || '').toString().trim().toUpperCase();
+  if (!prefix) {
+    prefix = nextFreePrefix_(cats);
+  }
+
+  // URL用のID（英数字。重複しないよう連番を足す）
+  var baseId = 'cat';
+  var newId = baseId + (cats.length + 1);
+  var n = cats.length + 1;
+  while (findCategory_(newId)) {
+    n += 1;
+    newId = baseId + n;
+  }
+
+  // 規程シートを用意
+  setupRulesSheet_(ss, sheetName);
+
+  // カテゴリシートへ追記
+  var sheet = ss.getSheetByName(CATEGORY_SHEET);
+  if (!sheet) {
+    sheet = setupSheet_(ss, CATEGORY_SHEET, CATEGORY_HEADER);
+  }
+  sheet.appendRow([newId, name, (input.desc || '').toString(), sheetName, prefix, (input.icon || '💬').toString()]);
+
+  clearCategoryCache_();
+  return findCategoryByName_(name);
+}
+
+/**
+ * まだ使われていないID接頭辞（英大文字1文字）を返す。
+ */
+function nextFreePrefix_(cats) {
+  var used = {};
+  for (var i = 0; i < cats.length; i++) {
+    used[(cats[i].prefix || '').toUpperCase()] = true;
+  }
+  var letters = 'CDEFGHIJLMNOPQSTUVWXYZAB';
+  for (var k = 0; k < letters.length; k++) {
+    if (!used[letters.charAt(k)]) {
+      return letters.charAt(k);
+    }
+  }
+  return 'X';
+}
+
+/**
+ * 設定画面用：追加ルールを保存する（パスワードが必要）。
+ * ルールは [{ruleId, category, text}] のフラットな配列で受け取る。
+ * 新しいカテゴリ名が含まれていれば、そのカテゴリと規程シートを作成する。
+ * 保存後、各規程シートの末尾へ反映する。
+ * @param {Object} payload  {rules:[...], newCategories:[{name, sheet, prefix}]}
+ * @param {string} password 設定画面のパスワード
  * @return {string} 画面に出すメッセージ
  */
-function saveBotSettings(items, password) {
+function saveBotSettings(payload, password) {
   try {
     if (!checkSettingsPassword(password)) {
       return 'パスワードが正しくありません。開き直してもう一度お試しください。';
@@ -524,53 +634,62 @@ function saveBotSettings(items, password) {
       return '保存する権限がありません。管理者にお問い合わせください。';
     }
 
-    items = items || [];
+    payload = payload || {};
+    var incoming = payload.rules || [];
+
+    clearCategoryCache_();
+
+    // 先に新規カテゴリを登録する（規程シートもここで作られる）
+    var newCats = payload.newCategories || [];
+    for (var a = 0; a < newCats.length; a++) {
+      createCategory_(newCats[a]);
+    }
+
     var sheet = getSettingsSheet_();
-    var original = sheet.getDataRange().getValues(); // 削除前の状態（採番の基準）
+    var original = sheet.getDataRange().getValues(); // 採番の基準（削除前の状態）
 
-    // 今回更新するカテゴリ名の一覧
-    var targetNames = {};
-    for (var t = 0; t < items.length; t++) {
-      var ct = findCategory_(items[t].id);
-      if (ct) targetNames[ct.name] = true;
+    // カテゴリごとに採番カウンタを用意する
+    var counters = {};
+    var cats = getCategories_();
+    for (var c = 0; c < cats.length; c++) {
+      counters[cats[c].name] = maxRuleNumber_(cats[c], original, incoming);
     }
 
-    // 更新対象外のカテゴリの行はそのまま残す
+    // 保存する行を組み立てる
     var rows = [];
-    for (var r = 1; r < original.length; r++) {
-      var name = (original[r][1] || '').toString();
-      if (!name || targetNames[name]) continue;
-      rows.push([original[r][0], name, original[r][2]]);
-    }
+    var touched = {};  // 規程シートへの反映が必要なカテゴリ
+    for (var i = 0; i < incoming.length; i++) {
+      var name = (incoming[i].category || '').toString().trim();
+      var category = findCategoryByName_(name);
+      if (!category) continue; // 未登録カテゴリは無視
 
-    // 更新対象のカテゴリを組み立てる（新規ぶんはここで採番）
-    for (var n = 0; n < items.length; n++) {
-      var category = findCategory_(items[n].id);
-      if (!category) continue;
+      var text = (incoming[i].text || '').toString().replace(/[\r\n]+/g, ' ').trim();
+      if (!text) continue;     // 空欄は登録しない
 
-      var rules = items[n].rules || [];
-      var counter = maxRuleNumber_(category, original, rules);
-
-      for (var k = 0; k < rules.length; k++) {
-        var text = (rules[k].text || '').toString().replace(/[\r\n]+/g, ' ').trim();
-        if (!text) continue; // 空欄は登録しない
-
-        // 既存IDはそのまま使い、新規は続き番号を振る
-        var ruleId = (rules[k].ruleId || '').toString().trim();
-        if (!ruleId) {
-          counter += 1;
-          ruleId = category.prefix + counter;
-        }
-        rows.push([ruleId, category.name, text]);
+      // 既存IDはそのまま使い、新規は続き番号を振る
+      var ruleId = (incoming[i].ruleId || '').toString().trim();
+      if (!ruleId) {
+        counters[category.name] = (counters[category.name] || 0) + 1;
+        ruleId = category.prefix + counters[category.name];
       }
+      rows.push([ruleId, category.name, text]);
+      touched[category.name] = category;
     }
 
-    // カテゴリ定義の順 → ID番号順に並べ替えて見やすくする
-    rows.sort(function (a, b) {
-      var oa = categoryOrder_(a[1]);
-      var ob = categoryOrder_(b[1]);
-      if (oa !== ob) return oa - ob;
-      return ruleNumber_(a[0]) - ruleNumber_(b[0]);
+    // 元々ルールがあったカテゴリも、消えた行を反映するため対象に入れる
+    for (var r = 1; r < original.length; r++) {
+      var oldName = (original[r][1] || '').toString().trim();
+      if (!oldName || touched[oldName]) continue;
+      var oldCat = findCategoryByName_(oldName);
+      if (oldCat) touched[oldName] = oldCat;
+    }
+
+    // カテゴリの並び順 → ID番号順に並べ替えて見やすくする
+    rows.sort(function (x, y) {
+      var ox = categoryOrder_(x[1]);
+      var oy = categoryOrder_(y[1]);
+      if (ox !== oy) return ox - oy;
+      return ruleNumber_(x[0]) - ruleNumber_(y[0]);
     });
 
     // 設定シートを書き戻す（ヘッダーは残す）
@@ -584,9 +703,10 @@ function saveBotSettings(items, password) {
     SpreadsheetApp.flush();
 
     // 各規程シートの末尾へ反映
-    for (var m = 0; m < items.length; m++) {
-      var c2 = findCategory_(items[m].id);
-      if (c2) syncRulesToSheet_(c2);
+    for (var key in touched) {
+      if (Object.prototype.hasOwnProperty.call(touched, key)) {
+        syncRulesToSheet_(touched[key]);
+      }
     }
 
     return '保存しました';
@@ -598,13 +718,14 @@ function saveBotSettings(items, password) {
 }
 
 /**
- * カテゴリ名の並び順（CATEGORIES の定義順）。未知は最後。
+ * カテゴリ名の並び順（「カテゴリ」シートの並び順）。未知は最後。
  */
 function categoryOrder_(name) {
-  for (var i = 0; i < CATEGORIES.length; i++) {
-    if (CATEGORIES[i].name === name) return i;
+  var cats = getCategories_();
+  for (var i = 0; i < cats.length; i++) {
+    if (cats[i].name === name) return i;
   }
-  return CATEGORIES.length;
+  return cats.length;
 }
 
 /**

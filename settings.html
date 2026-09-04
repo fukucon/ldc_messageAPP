@@ -15,40 +15,35 @@
     header .title { font-size: 16px; font-weight: 600; flex: 1; }
     header a { color: #fff; font-size: 13px; text-decoration: none; background: rgba(255,255,255,.2); border-radius: 16px; padding: 7px 13px; }
 
-    main { max-width: 760px; margin: 0 auto; padding: 16px 16px 96px; }
+    main { max-width: 820px; margin: 0 auto; padding: 16px 16px 96px; }
 
     .note { font-size: 13px; color: #5f6368; line-height: 1.7; background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
     .note[hidden] { display: none; }
-    .note code { background: #fff; border: 1px solid #e0c97f; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 
-    /* カテゴリ切り替えタブ */
-    .tabs { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; }
-    .tab {
-      flex: 0 0 auto; border: 1px solid #cfd8dc; background: #fff; color: #3c4043;
-      border-radius: 20px; padding: 9px 18px; font-size: 14px; cursor: pointer; font-family: inherit;
-    }
-    .tab.active { background: #0b8043; border-color: #0b8043; color: #fff; font-weight: 600; }
-
-    .panel[hidden] { display: none; }
-
-    .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-    .card h2 { margin: 0 0 6px; font-size: 15px; color: #0b8043; }
-    .card p.desc { margin: 0 0 12px; font-size: 13px; color: #5f6368; line-height: 1.6; }
+    .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 15px; color: #0b8043; }
 
     /* ルール1件の行 */
-    .rule { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .rule {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
     .rule .rid {
-      flex: 0 0 auto; min-width: 42px; text-align: center;
+      flex: 0 0 auto; min-width: 44px; text-align: center;
       background: #e8f5ee; color: #0b8043; border: 1px solid #b7ddc8;
-      border-radius: 6px; padding: 6px 6px; font-size: 12px; font-weight: 600;
+      border-radius: 6px; padding: 7px 6px; font-size: 12px; font-weight: 600;
     }
     .rule .rid.new { background: #fff4e5; color: #b06000; border-color: #f0c98a; }
     /* font-size:16px は iOS で入力時に画面が拡大されるのを防ぐため */
+    .rule select {
+      flex: 0 0 auto; width: 130px; padding: 9px 8px; border: 1px solid #ccc;
+      border-radius: 8px; font-size: 16px; font-family: inherit; background: #fff;
+    }
     .rule input {
-      flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #ccc;
+      flex: 1 1 220px; min-width: 0; padding: 10px 12px; border: 1px solid #ccc;
       border-radius: 8px; font-size: 16px; font-family: inherit;
     }
-    .rule input:disabled { background: #f5f5f5; color: #80868b; }
+    .rule select:disabled, .rule input:disabled { background: #f5f5f5; color: #80868b; }
     .rule .del {
       flex: 0 0 auto; border: none; background: #fdecea; color: #b3261e;
       border-radius: 8px; width: 38px; height: 38px; font-size: 16px; cursor: pointer;
@@ -63,8 +58,8 @@
     .add-btn:disabled { opacity: .4; cursor: default; }
     .empty { color: #9aa0a6; font-size: 14px; padding: 10px 0; }
 
-    .preview { margin-top: 12px; font-size: 12px; color: #5f6368; line-height: 1.7; }
-    .preview strong { color: #202124; }
+    .preview { margin-top: 16px; font-size: 12px; color: #5f6368; line-height: 1.7; }
+    .preview strong { color: #202124; display: block; margin-bottom: 4px; }
     .preview .line { background: #f8f9fa; border: 1px solid #e8eaed; border-radius: 6px; padding: 6px 9px; margin-top: 4px; word-break: break-all; font-family: monospace; }
 
     /* 画面下に固定した保存バー */
@@ -80,8 +75,24 @@
     .savebar button:disabled { opacity: .5; cursor: default; }
     #status { font-size: 14px; color: #0b8043; }
 
+    /* ===== 共通モーダル ===== */
+    .modal { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); padding: 16px; }
+    .modal[hidden] { display: none; }
+    .modal-box { background: #fff; border-radius: 12px; padding: 20px; width: 100%; max-width: 380px; }
+    .modal-box h3 { margin: 0 0 6px; font-size: 16px; }
+    .modal-box p { margin: 0 0 14px; font-size: 13px; color: #5f6368; line-height: 1.6; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 13px; color: #3c4043; margin-bottom: 4px; font-weight: 600; }
+    .field .hint { font-size: 12px; color: #80868b; margin-top: 4px; line-height: 1.5; }
+    .field input { width: 100%; padding: 11px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; font-family: inherit; }
+    .modal-err { color: #b3261e; font-size: 13px; min-height: 1.2em; margin-bottom: 6px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-actions button { border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
+    .btn-cancel { background: #e8eaed; color: #3c4043; }
+    .btn-ok { background: #0b8043; color: #fff; }
+
     /* ===== パスワードによるロック画面 ===== */
-    .lock { position: fixed; inset: 0; z-index: 30; background: #f1f3f4; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .lock { position: fixed; inset: 0; z-index: 50; background: #f1f3f4; display: flex; align-items: center; justify-content: center; padding: 16px; }
     .lock[hidden] { display: none; }
     .lock-box { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 22px; width: 100%; max-width: 340px; }
     .lock-box h2 { margin: 0 0 6px; font-size: 16px; color: #202124; }
@@ -116,26 +127,56 @@
       あなたのアカウントには保存の権限がありません。内容の確認のみ可能です。
     </div>
 
-    <div class="note">
-      規程の本文はスプレッドシートの各シートで編集してください。
-      この画面で登録した<strong>追加ルール</strong>は、保存時に
-      <strong>各規程シートの末尾</strong>へ <code>カテゴリ名：ルール本文[ID]</code> の形で1行ずつ書き出されます。
-      AIはその規程シートを読んで回答します。
+    <div class="card">
+      <h2>追加ルール</h2>
+      <div id="ruleList"></div>
+      <button class="add-btn" id="addRule" onclick="addRuleRow()">＋ ルールを追加</button>
+      <div class="preview" id="preview"></div>
     </div>
-
-    <div class="tabs" id="tabs"></div>
-    <div id="panels"></div>
   </main>
 
   <div class="savebar">
-    <button id="save" onclick="save()">すべて保存する</button>
+    <button id="save" onclick="save()">保存する</button>
     <span id="status"></span>
+  </div>
+
+  <!-- 新しいカテゴリを追加するモーダル -->
+  <div class="modal" id="catModal" hidden>
+    <div class="modal-box">
+      <h3>新しいカテゴリ</h3>
+      <p>カテゴリを追加すると、参照シートも自動で作成されます。</p>
+
+      <div class="field">
+        <label for="catName">カテゴリ名</label>
+        <input type="text" id="catName" placeholder="例：総務系">
+      </div>
+
+      <div class="field">
+        <label for="catSheet">参照シート名</label>
+        <input type="text" id="catSheet" placeholder="例：総務規程">
+        <div class="hint">規程の本文を貼り付けるシートです。空欄ならカテゴリ名と同じ名前で作成します。</div>
+      </div>
+
+      <div class="field">
+        <label for="catPrefix">ID接頭辞</label>
+        <input type="text" id="catPrefix" placeholder="例：S" maxlength="3">
+        <div class="hint">空欄なら未使用のアルファベットを自動で割り当てます。</div>
+      </div>
+
+      <div class="modal-err" id="catErr"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeCatModal()">キャンセル</button>
+        <button class="btn-ok" onclick="submitCat()">追加する</button>
+      </div>
+    </div>
   </div>
 
   <script>
     var canEdit = false;
-    var password = '';    // 認証済みのパスワードを保持（保存時に一緒に送る）
-    var categories = [];  // サーバーから取得したカテゴリ別の追加ルール
+    var password = '';       // 認証済みのパスワードを保持（保存時に一緒に送る）
+    var categories = [];     // 登録済みカテゴリ [{id, name, sheet, prefix}]
+    var newCategories = [];  // この画面で追加され、まだ保存していないカテゴリ
+    var pendingSelect = null; // 「新しいカテゴリ」を選んだ <select>
 
     // メニュー画面へ戻る
     google.script.run.withSuccessHandler(function (url) {
@@ -195,135 +236,209 @@
     function applySettings(s) {
       canEdit = !!s.canEdit;
       categories = s.categories || [];
+      newCategories = [];
 
       if (!canEdit) {
         document.getElementById('readonlyNote').hidden = false;
         document.getElementById('save').disabled = true;
+        document.getElementById('addRule').disabled = true;
       }
 
-      var tabs = document.getElementById('tabs');
-      var panels = document.getElementById('panels');
-      tabs.innerHTML = '';
-      panels.innerHTML = '';
-
-      categories.forEach(function (c, index) {
-        // タブ
-        var tab = document.createElement('button');
-        tab.className = 'tab' + (index === 0 ? ' active' : '');
-        tab.textContent = c.name;
-        tab.addEventListener('click', function () { showTab(index); });
-        tabs.appendChild(tab);
-
-        // パネル
-        var panel = document.createElement('div');
-        panel.className = 'panel';
-        panel.hidden = (index !== 0);
-
-        var info = document.createElement('div');
-        info.className = 'note';
-        info.innerHTML = '参照シート：<strong>' + escHtml(c.sheet) + '</strong>'
-          + '（登録量：約' + (c.rulesLength || 0).toLocaleString() + '文字）　'
-          + 'IDは <code>' + escHtml(c.prefix) + '1</code>, <code>' + escHtml(c.prefix) + '2</code> … と自動で振られます。';
-        panel.appendChild(info);
-
-        var card = document.createElement('div');
-        card.className = 'card';
-
-        var h = document.createElement('h2');
-        h.textContent = '追加ルール';
-        card.appendChild(h);
-
-        var d = document.createElement('p');
-        d.className = 'desc';
-        d.textContent = '規程に書かれていない社内ルールを1行ずつ登録します。'
-          + '保存すると「' + c.sheet + '」シートの末尾に書き出されます。';
-        card.appendChild(d);
-
-        var listEl = document.createElement('div');
-        listEl.className = 'rule-list';
-        card.appendChild(listEl);
-
-        var addBtn = document.createElement('button');
-        addBtn.className = 'add-btn';
-        addBtn.textContent = '＋ ルールを追加';
-        addBtn.disabled = !canEdit;
-        addBtn.addEventListener('click', function () {
-          addRuleRow(listEl, c, { ruleId: '', text: '' });
-          updatePreview(panel, c);
-        });
-        card.appendChild(addBtn);
-
-        var pv = document.createElement('div');
-        pv.className = 'preview';
-        card.appendChild(pv);
-
-        panel.appendChild(card);
-        panels.appendChild(panel);
-
-        // 既存ルールを並べる
-        (c.rules || []).forEach(function (r) { addRuleRow(listEl, c, r); });
-        updatePreview(panel, c);
+      var list = document.getElementById('ruleList');
+      list.innerHTML = '';
+      (s.rules || []).forEach(function (r) {
+        addRuleRow(r);
       });
-      // 保存直後の再読み込みでもメッセージを消さないよう、status には触らない
+      updatePreview();
     }
 
     // ルール1行分の入力欄を作る
-    function addRuleRow(listEl, category, rule) {
+    function addRuleRow(rule) {
+      rule = rule || { ruleId: '', category: '', text: '' };
+      var list = document.getElementById('ruleList');
+
       var row = document.createElement('div');
       row.className = 'rule';
 
+      // ID（新規はまだ採番されていない）
       var badge = document.createElement('span');
       var isNew = !rule.ruleId;
       badge.className = 'rid' + (isNew ? ' new' : '');
       badge.textContent = isNew ? '新規' : rule.ruleId;
       row.appendChild(badge);
 
+      // カテゴリのプルダウン（末尾に「新しいカテゴリ」を足す）
+      var sel = document.createElement('select');
+      sel.disabled = !canEdit;
+      fillCategoryOptions(sel, rule.category);
+      sel.addEventListener('change', function () {
+        if (sel.value === '__new__') {
+          openCatModal(sel);
+        } else {
+          updatePreview();
+        }
+      });
+      row.appendChild(sel);
+
+      // ルール本文
       var input = document.createElement('input');
       input.type = 'text';
       input.value = rule.text || '';
       input.placeholder = '例：在宅勤務は週2日まで。前日までに上長へ申請すること。';
       input.disabled = !canEdit;
       input.dataset.ruleId = rule.ruleId || '';
-      input.addEventListener('input', function () {
-        updatePreview(listEl.closest('.panel'), category);
-      });
+      input.addEventListener('input', updatePreview);
       row.appendChild(input);
 
+      // 削除
       var del = document.createElement('button');
       del.className = 'del';
       del.textContent = '✕';
       del.title = 'このルールを削除';
       del.disabled = !canEdit;
       del.addEventListener('click', function () {
-        var panel = listEl.closest('.panel');
         row.remove();
-        updatePreview(panel, category);
+        updatePreview();
       });
       row.appendChild(del);
 
-      listEl.appendChild(row);
+      list.appendChild(row);
+      updatePreview();
     }
 
-    // 規程シートに書き出される内容をプレビューする
-    function updatePreview(panel, category) {
-      var pv = panel.querySelector('.preview');
-      var inputs = panel.querySelectorAll('.rule input');
-      var lines = [];
-      for (var i = 0; i < inputs.length; i++) {
-        var text = inputs[i].value.replace(/[\r\n]+/g, ' ').trim();
-        if (!text) continue;
-        var rid = inputs[i].dataset.ruleId || '（保存時に採番）';
-        lines.push(category.name + '：' + text + '[' + rid + ']');
+    // プルダウンの選択肢を作り直す
+    function fillCategoryOptions(sel, selectedName) {
+      var current = selectedName || sel.value || '';
+      sel.innerHTML = '';
+
+      if (!current) {
+        var ph = document.createElement('option');
+        ph.value = '';
+        ph.textContent = 'カテゴリ選択';
+        sel.appendChild(ph);
       }
-      if (!lines.length) {
+
+      categories.forEach(function (c) {
+        var op = document.createElement('option');
+        op.value = c.name;
+        op.textContent = c.name;
+        sel.appendChild(op);
+      });
+
+      var add = document.createElement('option');
+      add.value = '__new__';
+      add.textContent = '＋ 新しいカテゴリ…';
+      sel.appendChild(add);
+
+      sel.value = current;
+    }
+
+    // すべてのプルダウンを作り直す（カテゴリ追加時）
+    function refreshAllSelects() {
+      var sels = document.querySelectorAll('.rule select');
+      for (var i = 0; i < sels.length; i++) {
+        fillCategoryOptions(sels[i], sels[i].value === '__new__' ? '' : sels[i].value);
+      }
+    }
+
+    /* ===== 新しいカテゴリ ===== */
+
+    function openCatModal(sel) {
+      pendingSelect = sel || null;
+      document.getElementById('catName').value = '';
+      document.getElementById('catSheet').value = '';
+      document.getElementById('catPrefix').value = '';
+      document.getElementById('catErr').textContent = '';
+      document.getElementById('catModal').hidden = false;
+      setTimeout(function () { document.getElementById('catName').focus(); }, 50);
+    }
+
+    function closeCatModal() {
+      document.getElementById('catModal').hidden = true;
+      // 「新しいカテゴリ」を選んだままにしない
+      if (pendingSelect && pendingSelect.value === '__new__') {
+        fillCategoryOptions(pendingSelect, '');
+      }
+      pendingSelect = null;
+    }
+
+    function submitCat() {
+      var name = document.getElementById('catName').value.trim();
+      var sheet = document.getElementById('catSheet').value.trim();
+      var prefix = document.getElementById('catPrefix').value.trim().toUpperCase();
+      var err = document.getElementById('catErr');
+
+      if (!name) { err.textContent = 'カテゴリ名を入力してください。'; return; }
+      for (var i = 0; i < categories.length; i++) {
+        if (categories[i].name === name) {
+          err.textContent = 'その名前のカテゴリはすでにあります。';
+          return;
+        }
+      }
+
+      // 画面上のカテゴリ一覧に足す（実際の登録は保存時）
+      var cat = { id: '', name: name, sheet: sheet || name, prefix: prefix || '?' };
+      categories.push(cat);
+      newCategories.push({ name: name, sheet: sheet, prefix: prefix });
+
+      var target = pendingSelect;
+      document.getElementById('catModal').hidden = true;
+      pendingSelect = null;
+
+      refreshAllSelects();
+      if (target) {
+        fillCategoryOptions(target, name);
+      }
+      updatePreview();
+    }
+
+    document.getElementById('catName').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); submitCat(); }
+    });
+
+    /* ===== プレビュー ===== */
+
+    // 規程シートに書き出される内容を表示する
+    function updatePreview() {
+      var pv = document.getElementById('preview');
+      var rows = document.querySelectorAll('.rule');
+      var byCat = {};
+      var order = [];
+
+      for (var i = 0; i < rows.length; i++) {
+        var sel = rows[i].querySelector('select');
+        var input = rows[i].querySelector('input');
+        var name = sel.value;
+        if (!name || name === '__new__') continue;
+        var text = input.value.replace(/[\r\n]+/g, ' ').trim();
+        if (!text) continue;
+
+        var rid = input.dataset.ruleId || '（保存時に採番）';
+        if (!byCat[name]) { byCat[name] = []; order.push(name); }
+        byCat[name].push(name + '：' + text + '[' + rid + ']');
+      }
+
+      if (!order.length) {
         pv.innerHTML = '<span class="empty">追加ルールはまだありません。</span>';
         return;
       }
-      var html = '<strong>「' + escHtml(category.sheet) + '」シートの末尾に書き出される内容</strong>';
-      lines.forEach(function (l) {
-        html += '<div class="line">' + escHtml(l) + '</div>';
+
+      var html = '';
+      order.forEach(function (name) {
+        var cat = findCat(name);
+        html += '<strong>「' + escHtml(cat ? cat.sheet : name) + '」シートの末尾に書き出される内容</strong>';
+        byCat[name].forEach(function (l) {
+          html += '<div class="line">' + escHtml(l) + '</div>';
+        });
       });
       pv.innerHTML = html;
+    }
+
+    function findCat(name) {
+      for (var i = 0; i < categories.length; i++) {
+        if (categories[i].name === name) return categories[i];
+      }
+      return null;
     }
 
     function escHtml(s) {
@@ -332,40 +447,34 @@
       });
     }
 
-    function showTab(index) {
-      var tabs = document.querySelectorAll('.tab');
-      var panels = document.querySelectorAll('.panel');
-      for (var i = 0; i < tabs.length; i++) {
-        tabs[i].classList.toggle('active', i === index);
-        panels[i].hidden = (i !== index);
-      }
-    }
-
     /* ===== 保存 ===== */
 
     function save() {
       if (!canEdit) return;
+
+      // カテゴリ未選択の行があれば知らせる
+      var rows = document.querySelectorAll('.rule');
+      var rules = [];
+      for (var i = 0; i < rows.length; i++) {
+        var sel = rows[i].querySelector('select');
+        var input = rows[i].querySelector('input');
+        var text = input.value.trim();
+        if (!text) continue; // 空欄は送らない
+        if (!sel.value || sel.value === '__new__') {
+          alert('カテゴリが選ばれていないルールがあります。');
+          return;
+        }
+        rules.push({ ruleId: input.dataset.ruleId || '', category: sel.value, text: text });
+      }
+
       document.getElementById('save').disabled = true;
       document.getElementById('status').textContent = '保存中...';
-
-      // 全カテゴリ分をまとめて送る
-      var panels = document.querySelectorAll('.panel');
-      var items = categories.map(function (c, i) {
-        var inputs = panels[i].querySelectorAll('.rule input');
-        var rules = [];
-        for (var k = 0; k < inputs.length; k++) {
-          var text = inputs[k].value.trim();
-          if (!text) continue; // 空欄は送らない
-          rules.push({ ruleId: inputs[k].dataset.ruleId || '', text: text });
-        }
-        return { id: c.id, rules: rules };
-      });
 
       google.script.run
         .withSuccessHandler(function (msg) {
           document.getElementById('status').textContent = msg;
           document.getElementById('save').disabled = false;
-          // 採番されたIDを反映するため読み直す
+          // 採番されたIDと新カテゴリを反映するため読み直す
           if (msg === '保存しました') {
             tryLoad(password, function () {});
           }
@@ -376,7 +485,7 @@
           document.getElementById('save').disabled = false;
           alert('保存できませんでした。もう一度お試しください。');
         })
-        .saveBotSettings(items, password);
+        .saveBotSettings({ rules: rules, newCategories: newCategories }, password);
     }
   </script>
 </body>
