@@ -305,6 +305,57 @@ function logBotQa_(areaName, question, answer) {
 }
 
 /**
+ * 【メンテナンス用】質問ログの列ズレを修復する。
+ *
+ * 「分野」列を追加する前に記録された行は [日時, 社員, 質問, 回答] の4列で、
+ * 現在のヘッダー [日時, 分野, 社員, 質問, 回答] に対して1列ぶん左にずれている。
+ * それらを1列ぶん右へ寄せ、空いた「分野」に既定値を入れる。
+ * 何度実行しても、既に正しい行には手を触れない。
+ *
+ * @param {string} defaultAreaName 旧データに入れる分野名（省略時は最初の分野）
+ */
+function repairQuestionLog(defaultAreaName) {
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BOT_LOG_SHEET);
+  if (!sheet) {
+    Logger.log('「' + BOT_LOG_SHEET + '」シートがありません。');
+    return;
+  }
+
+  defaultAreaName = defaultAreaName || AREAS[0].name;
+
+  // ヘッダーを最新に揃える
+  sheet.getRange(1, 1, 1, BOT_LOG_HEADER.length).setValues([BOT_LOG_HEADER]);
+
+  var last = sheet.getLastRow();
+  if (last < 2) {
+    Logger.log('修復対象のデータがありません。');
+    return;
+  }
+
+  var values = sheet.getRange(2, 1, last - 1, BOT_LOG_HEADER.length).getValues();
+  var fixed = 0;
+
+  for (var i = 0; i < values.length; i++) {
+    var b = (values[i][1] || '').toString();
+
+    // 分野名が入っていれば正しい行なので触らない
+    if (findAreaByName_(b)) continue;
+
+    // B列に社員（メールアドレスまたはゲスト）が入っていたら1列ずれている
+    var looksLikeUser = (b.indexOf('@') >= 0 || b === 'ゲスト');
+    if (!looksLikeUser) continue;
+
+    values[i] = [values[i][0], defaultAreaName, values[i][1], values[i][2], values[i][3]];
+    fixed++;
+  }
+
+  if (fixed) {
+    sheet.getRange(2, 1, values.length, BOT_LOG_HEADER.length).setValues(values);
+  }
+  Logger.log('質問ログを修復しました：' + fixed + '件（分野は「' + defaultAreaName + '」を設定）');
+}
+
+/**
  * ログイン中の社員の質問履歴を新しい順に取得する。
  * 指定分野の質問のみ、重複を除いて最大50件返す。
  * @param {string} areaId 分野ID
