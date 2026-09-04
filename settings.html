@@ -15,10 +15,11 @@
     header .title { font-size: 16px; font-weight: 600; flex: 1; }
     header a { color: #fff; font-size: 13px; text-decoration: none; background: rgba(255,255,255,.2); border-radius: 16px; padding: 7px 13px; }
 
-    main { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; }
+    main { max-width: 760px; margin: 0 auto; padding: 16px 16px 96px; }
 
     .note { font-size: 13px; color: #5f6368; line-height: 1.7; background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
     .note[hidden] { display: none; }
+    .note code { background: #fff; border: 1px solid #e0c97f; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 
     /* カテゴリ切り替えタブ */
     .tabs { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; }
@@ -32,15 +33,39 @@
 
     .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
     .card h2 { margin: 0 0 6px; font-size: 15px; color: #0b8043; }
-    .card p.desc { margin: 0 0 10px; font-size: 13px; color: #5f6368; line-height: 1.6; }
-    .card p.example { margin: 8px 0 0; font-size: 12px; color: #80868b; line-height: 1.6; }
+    .card p.desc { margin: 0 0 12px; font-size: 13px; color: #5f6368; line-height: 1.6; }
 
-    textarea {
-      width: 100%; min-height: 130px; resize: vertical;
-      border: 1px solid #ccc; border-radius: 8px; padding: 10px 12px;
-      font-size: 14px; line-height: 1.6; font-family: inherit;
+    /* ルール1件の行 */
+    .rule { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .rule .rid {
+      flex: 0 0 auto; min-width: 42px; text-align: center;
+      background: #e8f5ee; color: #0b8043; border: 1px solid #b7ddc8;
+      border-radius: 6px; padding: 6px 6px; font-size: 12px; font-weight: 600;
     }
-    textarea:disabled { background: #f5f5f5; color: #80868b; }
+    .rule .rid.new { background: #fff4e5; color: #b06000; border-color: #f0c98a; }
+    /* font-size:16px は iOS で入力時に画面が拡大されるのを防ぐため */
+    .rule input {
+      flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #ccc;
+      border-radius: 8px; font-size: 16px; font-family: inherit;
+    }
+    .rule input:disabled { background: #f5f5f5; color: #80868b; }
+    .rule .del {
+      flex: 0 0 auto; border: none; background: #fdecea; color: #b3261e;
+      border-radius: 8px; width: 38px; height: 38px; font-size: 16px; cursor: pointer;
+    }
+    .rule .del:disabled { opacity: .4; cursor: default; }
+
+    .add-btn {
+      border: 1px dashed #0b8043; background: #fff; color: #0b8043;
+      border-radius: 8px; padding: 11px 16px; font-size: 14px; cursor: pointer;
+      width: 100%; font-family: inherit; margin-top: 4px;
+    }
+    .add-btn:disabled { opacity: .4; cursor: default; }
+    .empty { color: #9aa0a6; font-size: 14px; padding: 10px 0; }
+
+    .preview { margin-top: 12px; font-size: 12px; color: #5f6368; line-height: 1.7; }
+    .preview strong { color: #202124; }
+    .preview .line { background: #f8f9fa; border: 1px solid #e8eaed; border-radius: 6px; padding: 6px 9px; margin-top: 4px; word-break: break-all; font-family: monospace; }
 
     /* 画面下に固定した保存バー */
     .savebar {
@@ -61,7 +86,6 @@
     .lock-box { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 22px; width: 100%; max-width: 340px; }
     .lock-box h2 { margin: 0 0 6px; font-size: 16px; color: #202124; }
     .lock-box p { margin: 0 0 14px; font-size: 13px; color: #5f6368; line-height: 1.6; }
-    /* font-size:16px は iOS で入力時に画面が拡大されるのを防ぐため */
     .lock-box input { width: 100%; padding: 11px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
     .lock-err { color: #b3261e; font-size: 13px; margin-top: 8px; min-height: 1.2em; }
     .lock-actions { display: flex; gap: 8px; justify-content: flex-end; }
@@ -93,8 +117,10 @@
     </div>
 
     <div class="note">
-      規程の本文そのものは、スプレッドシートの各シートで編集してください。
-      この画面では、カテゴリごとに<strong>追加する指示とルール</strong>を設定します。
+      規程の本文はスプレッドシートの各シートで編集してください。
+      この画面で登録した<strong>追加ルール</strong>は、保存時に
+      <strong>各規程シートの末尾</strong>へ <code>カテゴリ名：ルール本文[ID]</code> の形で1行ずつ書き出されます。
+      AIはその規程シートを読んで回答します。
     </div>
 
     <div class="tabs" id="tabs"></div>
@@ -109,7 +135,7 @@
   <script>
     var canEdit = false;
     var password = '';    // 認証済みのパスワードを保持（保存時に一緒に送る）
-    var categories = [];  // サーバーから取得したカテゴリ別設定
+    var categories = [];  // サーバーから取得したカテゴリ別の追加ルール
 
     // メニュー画面へ戻る
     google.script.run.withSuccessHandler(function (url) {
@@ -138,9 +164,6 @@
       if (e.key === 'Enter') { e.preventDefault(); unlock(); }
     });
 
-    /**
-     * パスワードで設定を読み込む。失敗したら onFail を呼ぶ。
-     */
     function tryLoad(pw, onFail) {
       google.script.run
         .withSuccessHandler(function (s) {
@@ -156,14 +179,13 @@
         .getBotSettings(pw);
     }
 
-    // チャット画面でパスワードを入力済みなら、そのまま開く
+    // メニュー画面でパスワードを入力済みなら、そのまま開く
     (function load() {
       var saved = '';
       try { saved = sessionStorage.getItem('ldcSettingsPw') || ''; } catch (e) {}
       if (!saved) return; // ロック画面のまま待つ
 
       tryLoad(saved, function () {
-        // 保存されていたパスワードが無効ならロック画面を出す
         try { sessionStorage.removeItem('ldcSettingsPw'); } catch (e) {}
       });
     })();
@@ -196,41 +218,112 @@
         var panel = document.createElement('div');
         panel.className = 'panel';
         panel.hidden = (index !== 0);
-        panel.innerHTML =
-          '<div class="note">参照シート：<strong>' + escHtml(c.sheet) + '</strong>' +
-          '（登録量：約' + (c.rulesLength || 0).toLocaleString() + '文字）</div>' +
 
-          '<div class="card">' +
-            '<h2>AIへの追加指示</h2>' +
-            '<p class="desc">回答の仕方についての指示を追加できます。' +
-            escHtml(c.name) + 'の質問のたびにAIへ一緒に送られます。</p>' +
-            '<textarea data-kind="instruction" placeholder="例：回答は3行以内で簡潔にまとめてください。"></textarea>' +
-            '<p class="example">例：「回答の最後に必ず担当部署の連絡先を添えてください。」<br>' +
-            '例：「専門用語は使わず、新入社員にもわかる言葉で説明してください。」</p>' +
-          '</div>' +
+        var info = document.createElement('div');
+        info.className = 'note';
+        info.innerHTML = '参照シート：<strong>' + escHtml(c.sheet) + '</strong>'
+          + '（登録量：約' + (c.rulesLength || 0).toLocaleString() + '文字）　'
+          + 'IDは <code>' + escHtml(c.prefix) + '1</code>, <code>' + escHtml(c.prefix) + '2</code> … と自動で振られます。';
+        panel.appendChild(info);
 
-          '<div class="card">' +
-            '<h2>追加ルール（規程への追記）</h2>' +
-            '<p class="desc">規程には書かれていない社内ルールや運用を追記できます。' +
-            'AIは規程本文とあわせて、ここの内容も根拠として回答します。</p>' +
-            '<textarea data-kind="rules" placeholder="例：申請は3営業日前までに社内システムから行うこと。"></textarea>' +
-            '<p class="example">例：「在宅勤務は週2日まで。前日までに上長へ申請すること。」<br>' +
-            '例：「申請書は社内ポータルの様式集にあります。」</p>' +
-          '</div>';
+        var card = document.createElement('div');
+        card.className = 'card';
 
-        // テキストエリアに現在値を入れる（textContent で安全に設定）
-        var ta = panel.querySelectorAll('textarea');
-        ta[0].value = c.extraInstruction || '';
-        ta[1].value = c.extraRules || '';
-        if (!canEdit) {
-          ta[0].disabled = true;
-          ta[1].disabled = true;
-        }
+        var h = document.createElement('h2');
+        h.textContent = '追加ルール';
+        card.appendChild(h);
 
+        var d = document.createElement('p');
+        d.className = 'desc';
+        d.textContent = '規程に書かれていない社内ルールを1行ずつ登録します。'
+          + '保存すると「' + c.sheet + '」シートの末尾に書き出されます。';
+        card.appendChild(d);
+
+        var listEl = document.createElement('div');
+        listEl.className = 'rule-list';
+        card.appendChild(listEl);
+
+        var addBtn = document.createElement('button');
+        addBtn.className = 'add-btn';
+        addBtn.textContent = '＋ ルールを追加';
+        addBtn.disabled = !canEdit;
+        addBtn.addEventListener('click', function () {
+          addRuleRow(listEl, c, { ruleId: '', text: '' });
+          updatePreview(panel, c);
+        });
+        card.appendChild(addBtn);
+
+        var pv = document.createElement('div');
+        pv.className = 'preview';
+        card.appendChild(pv);
+
+        panel.appendChild(card);
         panels.appendChild(panel);
-      });
 
-      document.getElementById('status').textContent = '';
+        // 既存ルールを並べる
+        (c.rules || []).forEach(function (r) { addRuleRow(listEl, c, r); });
+        updatePreview(panel, c);
+      });
+      // 保存直後の再読み込みでもメッセージを消さないよう、status には触らない
+    }
+
+    // ルール1行分の入力欄を作る
+    function addRuleRow(listEl, category, rule) {
+      var row = document.createElement('div');
+      row.className = 'rule';
+
+      var badge = document.createElement('span');
+      var isNew = !rule.ruleId;
+      badge.className = 'rid' + (isNew ? ' new' : '');
+      badge.textContent = isNew ? '新規' : rule.ruleId;
+      row.appendChild(badge);
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = rule.text || '';
+      input.placeholder = '例：在宅勤務は週2日まで。前日までに上長へ申請すること。';
+      input.disabled = !canEdit;
+      input.dataset.ruleId = rule.ruleId || '';
+      input.addEventListener('input', function () {
+        updatePreview(listEl.closest('.panel'), category);
+      });
+      row.appendChild(input);
+
+      var del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '✕';
+      del.title = 'このルールを削除';
+      del.disabled = !canEdit;
+      del.addEventListener('click', function () {
+        var panel = listEl.closest('.panel');
+        row.remove();
+        updatePreview(panel, category);
+      });
+      row.appendChild(del);
+
+      listEl.appendChild(row);
+    }
+
+    // 規程シートに書き出される内容をプレビューする
+    function updatePreview(panel, category) {
+      var pv = panel.querySelector('.preview');
+      var inputs = panel.querySelectorAll('.rule input');
+      var lines = [];
+      for (var i = 0; i < inputs.length; i++) {
+        var text = inputs[i].value.replace(/[\r\n]+/g, ' ').trim();
+        if (!text) continue;
+        var rid = inputs[i].dataset.ruleId || '（保存時に採番）';
+        lines.push(category.name + '：' + text + '[' + rid + ']');
+      }
+      if (!lines.length) {
+        pv.innerHTML = '<span class="empty">追加ルールはまだありません。</span>';
+        return;
+      }
+      var html = '<strong>「' + escHtml(category.sheet) + '」シートの末尾に書き出される内容</strong>';
+      lines.forEach(function (l) {
+        html += '<div class="line">' + escHtml(l) + '</div>';
+      });
+      pv.innerHTML = html;
     }
 
     function escHtml(s) {
@@ -258,14 +351,24 @@
       // 全カテゴリ分をまとめて送る
       var panels = document.querySelectorAll('.panel');
       var items = categories.map(function (c, i) {
-        var ta = panels[i].querySelectorAll('textarea');
-        return { id: c.id, extraInstruction: ta[0].value, extraRules: ta[1].value };
+        var inputs = panels[i].querySelectorAll('.rule input');
+        var rules = [];
+        for (var k = 0; k < inputs.length; k++) {
+          var text = inputs[k].value.trim();
+          if (!text) continue; // 空欄は送らない
+          rules.push({ ruleId: inputs[k].dataset.ruleId || '', text: text });
+        }
+        return { id: c.id, rules: rules };
       });
 
       google.script.run
         .withSuccessHandler(function (msg) {
           document.getElementById('status').textContent = msg;
           document.getElementById('save').disabled = false;
+          // 採番されたIDを反映するため読み直す
+          if (msg === '保存しました') {
+            tryLoad(password, function () {});
+          }
           setTimeout(function () { document.getElementById('status').textContent = ''; }, 4000);
         })
         .withFailureHandler(function () {
